@@ -13,6 +13,9 @@
     "lint": "echo ok"
   },
   "dependencies": {
-    "@peer-bridge/protocol": "workspace:*"
+    "@peer-bridge/protocol": "workspace:*",
+    "cbor-x": "^1.6.4",
+    "tweetnacl": "^1.0.3",
+    "uuid": "^14.0.0"
   }
 }

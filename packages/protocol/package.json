@@ -12,5 +12,8 @@
     "test:vectors": "node --import tsx --test test-vectors/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "echo ok"
+  },
+  "dependencies": {
+    "cbor-x": "^1.6.4"
   }
 }

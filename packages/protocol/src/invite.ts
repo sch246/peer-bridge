@@ -1,0 +1,146 @@
+// Invite code generation: 4-word PGP word list codes + nonce + SHA-256 hash.
+// Spec: protocol.md §6
+
+import { createHash } from 'node:crypto';
+
+// PGP word list — 256 words, each index maps directly from a byte value (0–255)
+const PGP_WORD_LIST: string[] = [
+  'aardvark', 'absurd', 'accrue', 'acme', 'adrift', 'adult', 'afflict', 'ahead',
+  'aimless', 'algol', 'allow', 'alone', 'ammo', 'ancient', 'apple', 'artist',
+  'assume', 'athens', 'atlas', 'aztec', 'baboon', 'backfield', 'backward', 'banjo',
+  'beaming', 'bedlamp', 'beehive', 'beeswax', 'befriend', 'belfast', 'berserk', 'billiard',
+  'bison', 'blackjack', 'blockade', 'blowtorch', 'bluebird', 'bombast', 'bookshelf', 'brackish',
+  'breadline', 'breakup', 'brickyard', 'briefcase', 'burbank', 'button', 'buzzard', 'cement',
+  'chairlift', 'chatter', 'checkup', 'chisel', 'choking', 'chopper', 'christmas', 'clamshell',
+  'classic', 'classroom', 'cleanup', 'clockwork', 'cobra', 'commence', 'concert', 'cowbell',
+  'crackdown', 'cranky', 'crowfoot', 'crucial', 'crumpled', 'crusade', 'cubic', 'dashboard',
+  'deadbolt', 'deckhand', 'dogsled', 'dragnet', 'drainage', 'dreadful', 'drifter', 'dropper',
+  'drumbeat', 'drunken', 'dupont', 'dwelling', 'eating', 'edict', 'egghead', 'eightball',
+  'endorse', 'endow', 'enlist', 'erase', 'escape', 'exceed', 'eyeglass', 'eyetooth',
+  'facial', 'fallout', 'flagpole', 'flatfoot', 'flytrap', 'fracture', 'framework', 'freedom',
+  'frighten', 'gazelle', 'geiger', 'glitter', 'glucose', 'goggles', 'goldfish', 'gremlin',
+  'guidance', 'hamlet', 'highchair', 'hockey', 'indoors', 'indulge', 'inverse', 'involve',
+  'island', 'jawbone', 'keyboard', 'kickoff', 'kiwi', 'klaxon', 'locale', 'lockup',
+  'merit', 'minnow', 'miser', 'mohawk', 'mural', 'music', 'necklace', 'neptune',
+  'newborn', 'nightbird', 'oakland', 'obtuse', 'offload', 'optic', 'orca', 'payday',
+  'peachy', 'pheasant', 'physique', 'playhouse', 'pluto', 'preclude', 'prefer', 'preshrunk',
+  'prowler', 'pupil', 'puppy', 'python', 'quadrant', 'quiver', 'quota', 'ragtime',
+  'ratchet', 'rebirth', 'reform', 'regain', 'reindeer', 'rematch', 'repay', 'retouch',
+  'revenge', 'reward', 'rhythm', 'ribcage', 'ringbolt', 'robust', 'rocker', 'ruffled',
+  'sailboat', 'sawdust', 'scallion', 'scenic', 'scorecard', 'scotland', 'seabird', 'select',
+  'sentence', 'shadow', 'shamrock', 'showgirl', 'skullcap', 'skydive', 'slingshot', 'slowdown',
+  'snapline', 'snapshot', 'snowcap', 'snowslide', 'solo', 'southward', 'soybean', 'spaniel',
+  'spearhead', 'spellbind', 'spheroid', 'spigot', 'spindle', 'spyglass', 'stagehand', 'stagestruck',
+  'stethoscope', 'stiletto', 'storybook', 'sycamore', 'tactics', 'talon', 'tapeworm', 'tempest',
+  'tiger', 'tissue', 'tonic', 'topmost', 'tracker', 'transit', 'trauma', 'treadmill',
+  'trojan', 'trouble', 'tumor', 'tunnel', 'tycoon', 'uncut', 'unearth', 'unwind',
+  'uproot', 'upset', 'upshot', 'vapor', 'village', 'virus', 'vulcan', 'waffle',
+  'wallet', 'watchword', 'wayside', 'willow', 'woodlark', 'zulu',
+  'adroitness', 'advisor', 'aftermath', 'aggregate', 'alkali', 'almighty',
+  'amulet', 'amusement', 'antenna', 'applicant', 'apollo', 'armistice',
+  'article', 'asteroid', 'atlantic', 'atmosphere', 'autopsy', 'babylon',
+  'backwater', 'barbecue', 'beneath', 'benefit', 'bestow', 'billiard',
+  'bison', 'blackjack', 'blockade', 'bodyguard', 'bookseller', 'brackish',
+  'breadline', 'breakup', 'brickyard', 'briefcase', 'burbank', 'button',
+  'buzzard', 'cement', 'chairlift', 'chatter', 'checkup', 'chisel',
+  'choking', 'chopper', 'christmas', 'clamshell', 'classic', 'classroom',
+  'cleanup', 'clockwork', 'cobra', 'commence', 'concert', 'cowbell',
+  'crackdown', 'cranky', 'crowfoot', 'crucial', 'crumpled', 'crusade',
+  'cubic', 'dashboard', 'deadbolt', 'deckhand', 'dogsled', 'dragnet',
+  'drainage', 'dreadful', 'drifter', 'dropper', 'drumbeat', 'drunken',
+  'dupont', 'dwelling', 'eating', 'edict', 'egghead', 'eightball',
+  'endorse', 'endow', 'enlist', 'erase', 'escape', 'exceed', 'eyeglass',
+  'eyetooth', 'facial', 'fallout', 'flagpole', 'flatfoot', 'flytrap',
+  'fracture', 'framework', 'freedom', 'frighten', 'gazelle', 'geiger',
+  'glitter', 'glucose', 'goggles', 'goldfish', 'gremlin', 'guidance',
+  'hamlet', 'highchair', 'hockey', 'indoors', 'indulge', 'inverse',
+  'involve', 'island', 'jawbone', 'keyboard', 'kickoff', 'kiwi',
+  'klaxon', 'locale', 'lockup', 'merit', 'minnow', 'miser', 'mohawk',
+  'mural', 'music', 'necklace', 'neptune', 'newborn', 'nightbird',
+  'oakland', 'obtuse', 'offload', 'optic', 'orca', 'payday', 'peachy',
+  'pheasant', 'physique', 'playhouse', 'pluto', 'preclude', 'prefer',
+  'preshrunk', 'prowler', 'pupil', 'puppy', 'python', 'quadrant',
+  'quiver', 'quota', 'ragtime', 'ratchet', 'rebirth', 'reform', 'regain',
+  'reindeer', 'rematch', 'repay', 'retouch', 'revenge', 'reward',
+  'rhythm', 'ribcage', 'ringbolt', 'robust', 'rocker', 'ruffled',
+  'sailboat', 'sawdust', 'scallion', 'scenic', 'scorecard', 'scotland',
+  'seabird', 'select', 'sentence', 'shadow', 'shamrock', 'showgirl',
+  'skullcap', 'skydive', 'slingshot', 'slowdown', 'snapline', 'snapshot',
+  'snowcap', 'snowslide', 'solo', 'southward', 'soybean', 'spaniel',
+  'spearhead', 'spellbind', 'spheroid', 'spigot', 'spindle', 'spyglass',
+  'stagehand', 'stagestruck', 'stethoscope', 'stiletto', 'storybook',
+  'sycamore', 'tactics', 'talon', 'tapeworm', 'tempest', 'tiger',
+  'tissue', 'tonic', 'topmost', 'tracker', 'transit', 'trauma',
+  'treadmill', 'trojan', 'trouble', 'tumor', 'tunnel', 'tycoon',
+  'uncut', 'unearth', 'unwind', 'uproot', 'upset', 'upshot', 'vapor',
+  'village', 'virus', 'vulcan', 'waffle', 'wallet', 'watchword',
+  'wayside', 'willow', 'woodlark', 'zulu',
+];
+
+/**
+ * Generate an invite code from deterministic seed bytes.
+ *
+ * Word bytes: 4 bytes, each maps to a PGP word list index (byte % 256).
+ * Nonce bytes: 2 bytes, hex-encoded.
+ * Returns: "word1-word2-word3-word4-XXXX"
+ */
+export function generateInviteCode(wordBytes: Uint8Array, nonceBytes: Uint8Array): string {
+  if (wordBytes.length !== 4) {
+    throw new Error(`Word bytes must be 4 bytes, got ${wordBytes.length}`);
+  }
+  if (nonceBytes.length !== 2) {
+    throw new Error(`Nonce bytes must be 2 bytes, got ${nonceBytes.length}`);
+  }
+
+  const words = Array.from(wordBytes).map((b) => PGP_WORD_LIST[b]);
+  const nonce = Array.from(nonceBytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  return `${words.join('-')}-${nonce}`;
+}
+
+/**
+ * Generate a random invite code using Node.js crypto.
+ */
+export function generateRandomInviteCode(): { code: string; codeHash: string } {
+  const wordBytes = new Uint8Array(4);
+  const nonceBytes = new Uint8Array(2);
+  crypto.getRandomValues(wordBytes);
+  crypto.getRandomValues(nonceBytes);
+
+  const code = generateInviteCode(wordBytes, nonceBytes);
+  const codeHash = hashInviteCode(code);
+
+  return { code, codeHash };
+}
+
+/**
+ * Hash an invite code with SHA-256 (hex).
+ */
+export function hashInviteCode(code: string): string {
+  return createHash('sha256').update(code, 'utf-8').digest('hex');
+}
+
+/**
+ * Decode an invite code back to word byte indices.
+ * Returns null if the code is malformed.
+ */
+export function decodeInviteCode(code: string): { wordIndices: number[]; nonceBytes: Uint8Array } | null {
+  const parts = code.split('-');
+  if (parts.length !== 5) return null;
+  if (parts[4].length !== 4) return null;
+
+  const wordIndices = parts.slice(0, 4).map((w) => PGP_WORD_LIST.indexOf(w));
+  if (wordIndices.some((i) => i === -1)) return null;
+
+  const nonceBytes = new Uint8Array(2);
+  const hexStr = parts[4];
+  for (let i = 0; i < 2; i++) {
+    const byte = parseInt(hexStr.slice(i * 2, i * 2 + 2), 16);
+    if (isNaN(byte)) return null;
+    nonceBytes[i] = byte;
+  }
+
+  return { wordIndices, nonceBytes };
+}

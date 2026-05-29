@@ -33,6 +33,7 @@ VALUES (?, self_peer_id, datetime('now')),
 ### 信任验证先于创建
 
 创建 room 之前必须通过两层验证：
+
 1. Identity 交叉验证（connection.peer_id == frame.sender_peer_id）
 2. Known_peers trust 检查
 

@@ -21,6 +21,7 @@ function loadVectors<T>(filename: string): T {
 // ── Peer ID test vectors ──
 
 interface PeerIdVector {
+  name: string;
   input: { publicKey: string };
   expected: { base32_no_checksum: string; checksum_char: string; peer_id: string };
 }
@@ -50,6 +51,7 @@ describe('Peer ID encoding', () => {
 // ── Invite code test vectors ──
 
 interface InviteVector {
+  name: string;
   input: { word_bytes: string; nonce_bytes: string };
   expected: { invite_code: string; code_hash: string };
 }
@@ -74,6 +76,7 @@ describe('Invite code', () => {
 // ── CBOR frame test vectors ──
 
 interface CBORFrameVector {
+  name: string;
   input: Record<string, unknown>;
   expected: { frame_hex: string; note: string };
 }

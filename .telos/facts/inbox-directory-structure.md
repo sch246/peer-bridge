@@ -30,6 +30,7 @@
 ```
 
 **用途**：
+
 - Per-sender seq 跨连接恢复（daemon 重启后从 transcript 反向计算 last_seen_seq）
 - `room:resync_request` 的重传数据源
 - 审计与调试
@@ -41,6 +42,7 @@
 **路径**：`<data_dir>/rooms/<room_id>/inbox/`
 
 **文件落盘流程**：
+
 1. `room:file_offer` 到达 → 不创建文件，仅记录在 SQLite + transcript
 2. 用户接受 offer → daemon 发送 `room:file_accept`
 3. Sender 开始发送 `room:file_chunk` on `bulk` channel
@@ -52,10 +54,10 @@
 
 ## data_dir 平台路径
 
-| 平台 | 路径 |
-|---|---|
-| Linux/macOS | `~/.peer-bridge/` |
-| Windows | `%APPDATA%\peer-bridge\` |
+| 平台        | 路径                     |
+| ----------- | ------------------------ |
+| Linux/macOS | `~/.peer-bridge/`        |
+| Windows     | `%APPDATA%\peer-bridge\` |
 
 ## 对 peer-bridge 的影响
 

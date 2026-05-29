@@ -15,12 +15,14 @@ M0 阶段要求执行 agent-blind 检查：给 clean agent 仅 `.telos/` 和 `do
 **做法**：`subagent(context: "fresh", reads: [telos, protocol])`，task prompt 只写正向要求，没有负面约束。
 
 **结果**（commit `534fed9`）：
+
 - subagent 开局就 `ls` 仓库根目录，发现 `DESIGN.md` 后自然读了
 - 读了 §6 "答卷" 再答题 → 开卷冒充闭卷，结果作废
 - 即使输出与 §6 完全一致也证明不了 telos 是自足的
 
 **根因**：
-1. pi `delegate` subagent 的 `reads` 是 *预加载* 不是 *限制访问*
+
+1. pi `delegate` subagent 的 `reads` 是 _预加载_ 不是 _限制访问_
 2. task prompt 没写禁止读 DESIGN.md 的负面约束
 3. LLM 的默认行为是"先读项目总览"
 
@@ -75,12 +77,12 @@ M0 阶段要求执行 agent-blind 检查：给 clean agent 仅 `.telos/` 和 `do
 
 ## Consequences
 
-| 正面 | 负面 |
-|---|---|
-| 排除开卷污染 | 需要父 agent 手动 diff（不能自动化） |
-| 白名单 + 黑名单双重约束 | 负面约束可能被模型忽略（需要监控） |
-| BACKLOG 从 diff 中自动充填 | |
-| 协议可复用（未来 M0 重做时直接套） | |
+| 正面                               | 负面                                 |
+| ---------------------------------- | ------------------------------------ |
+| 排除开卷污染                       | 需要父 agent 手动 diff（不能自动化） |
+| 白名单 + 黑名单双重约束            | 负面约束可能被模型忽略（需要监控）   |
+| BACKLOG 从 diff 中自动充填         |                                      |
+| 协议可复用（未来 M0 重做时直接套） |                                      |
 
 ## Related
 

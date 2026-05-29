@@ -45,12 +45,12 @@ CREATE INDEX idx_messages_room_unread ON room_messages(room_id, read_at);
 
 ## Kind 枚举
 
-| Kind | 含义 | body 内容 |
-|---|---|---|
-| `text` | 文本消息 | 消息正文 |
-| `system` | 系统控制消息 | JSON: `{ action, ... }` |
+| Kind         | 含义         | body 内容                            |
+| ------------ | ------------ | ------------------------------------ |
+| `text`       | 文本消息     | 消息正文                             |
+| `system`     | 系统控制消息 | JSON: `{ action, ... }`              |
 | `file_offer` | 文件传输提议 | JSON: `{ name, size, sha256, note }` |
-| `file_done` | 文件传输完成 | JSON: `{ name, size, sha256 }` |
+| `file_done`  | 文件传输完成 | JSON: `{ name, size, sha256 }`       |
 
 ## 与 transcript.jsonl 的关系
 

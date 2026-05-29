@@ -32,11 +32,13 @@ VALUES (?, self_peer_id, datetime('now')),
 
 ### 信任验证先于创建
 
-创建 room 之前必须通过 §6.2 步骤 3-4 的验证：
+创建 room 之前必须通过两层验证：
 1. Identity 交叉验证（connection.peer_id == frame.sender_peer_id）
 2. Known_peers trust 检查
 
 如果 sender 不在 known_peers 中 → 拒绝 message，不创建 room。
+
+**为什么是两层**：DTLS 握手阶段（protocol.md §3 步骤 4）已校验过 known_peers + Ed25519 签名。理论上握手不通过就没有 DataChannel，帧处理时不需要重查。但 known_peers 可能在连接存活期间被用户编辑（删除或降级信任），握手时通过的 peer 在数据到达时可能已不再受信任。**每帧重查是有意冗余**，防御运行中信任撤销的窗口。这是防御性编程，不是矛盾。
 
 ### 多人房间
 
@@ -44,11 +46,11 @@ VALUES (?, self_peer_id, datetime('now')),
 
 ## Consequences
 
-| 正面 | 负面 |
-|---|---|
-| 用户不需要手动创建 1:1 聊天室 | 隐式创建可能导致僵尸 room（但无实际危害） |
-| 接收方在验证通过后自动入 room | 垃圾 peer（如果在 known_peers 中）可自动创建 room |
-| 与 `peer_chat_send(to="alice")` → 隐式创建 → 发送消息的 UX 一致 | |
+| 正面                                                            | 负面                                              |
+| --------------------------------------------------------------- | ------------------------------------------------- |
+| 用户不需要手动创建 1:1 聊天室                                   | 隐式创建可能导致僵尸 room（但无实际危害）         |
+| 接收方在验证通过后自动入 room                                   | 垃圾 peer（如果在 known_peers 中）可自动创建 room |
+| 与 `peer_chat_send(to="alice")` → 隐式创建 → 发送消息的 UX 一致 |                                                   |
 
 ## Related
 

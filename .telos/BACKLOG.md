@@ -13,6 +13,7 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 ## Agent-Blind Diff 结果
 
 **G1-G5 已修复**（新增文件）：
+
 - ✅ G1: 文件落盘路径 → `facts/inbox-directory-structure.md`
 - ✅ G2: SQLite schema → `facts/daemon-sqlite-schema.md`
 - ✅ G3: read_at 未读管理 → `facts/daemon-sqlite-schema.md`（含未读计数查询）
@@ -20,12 +21,13 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 - ✅ G5: 1:1 房间隐式创建 → `decisions/implicit-1to1-room-creation.md`
 
 **Agent 推断 I-1 到 I-7**（低优先级，M1 实现前可补）：
+
 - I-1: known_peers.toml schema — 已在 protocol.md 中有格式，fact 可补
 - I-2: SQLite schema — 已补（G2）
 - I-3: transcript.jsonl 格式 — 已补（G4）
-- I-4: seq 跨连接生命周期 — 待明确（restart 后从 transcript 恢复）
+- I-4: seq 跨连接生命周期 — 已落地在 `decisions/per-sender-seq-numbering.md`（持久化 seq，跨重启不归零）
 - I-5: IPC 事件 schema — 待补充到 protocol 附录
-- I-6: msg 与 file_offer 共享 seq 空间 — 根据 per-sender-seq 决定：是，共享同一序列
+- I-6: msg 与 file_offer 共享 seq 空间 — 已落地在 `decisions/per-sender-seq-numbering.md`（类型间共享同一 seq）
 - I-7: Room membership state machine — 第二版功能，第一版不暴露 API
 
 ## 下阶段

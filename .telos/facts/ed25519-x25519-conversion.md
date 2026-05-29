@@ -9,10 +9,12 @@
 ### 原理
 
 Ed25519 和 X25519 使用相同的底层曲线（Curve25519），但密钥编码方式不同：
+
 - Ed25519 密钥：Twisted Edwards 坐标系，带 cofactor 清除
 - X25519 密钥：Montgomery 坐标系
 
 libsodium 提供双向转换函数：
+
 ```c
 // Ed25519 公钥 → X25519 公钥
 int crypto_sign_ed25519_pk_to_curve25519(
@@ -30,6 +32,7 @@ int crypto_sign_ed25519_sk_to_curve25519(
 ### tweetnacl 等价操作
 
 在 `tweetnacl`（JS 实现）中，等价于：
+
 ```typescript
 // Ed25519 公钥 → X25519 公钥
 nacl.sign.pk_to_curve25519(ed25519PublicKey): Uint8Array(32)
@@ -50,10 +53,10 @@ const message = nacl.box.seal.open(sealedBox, recipientX25519PublicKey, recipien
 
 ## 安全属性
 
-| 属性 | 说明 |
-|---|---|
-| **确定性** | 给定 Ed25519 密钥 → 生成相同的 X25519 密钥 |
-| **不可逆** | 从 X25519 密钥不能恢复 Ed25519 签名能力 |
+| 属性       | 说明                                         |
+| ---------- | -------------------------------------------- |
+| **确定性** | 给定 Ed25519 密钥 → 生成相同的 X25519 密钥   |
+| **不可逆** | 从 X25519 密钥不能恢复 Ed25519 签名能力      |
 | **安全性** | 两种曲线的离散对数问题等价，转换不增加攻击面 |
 
 ## 对 peer-bridge 的影响

@@ -20,6 +20,7 @@ PB-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
 4. **分组**：每 5 字符插连字符 `-`，得到前缀 + `4×5 + 5×5 + 3` 即 5+5+5+5+5+5+3 = 需要调整
 
 实际上，53 字符的 base32 加上 6 个分隔符的布局：
+
 - 前 5 字符 + "-"
 - 再 5 字符 + "-"
 - 再 5 字符 + "-"
@@ -40,6 +41,7 @@ Luhn checksum 加 1 字符 = 53 字符。
 改用每 5 字符分组：5+5+5+5+5+5+5+5+5+3 = 53 → 10 组也不好看。
 
 **最终方案**（与 DESIGN.md 一致，采用 5 字符分组）：
+
 ```
 PB-7X4J2-M9KQR-ABCDE-FGHIJ-KLMNO-PQRST
 ```
@@ -52,6 +54,7 @@ PB-7X4J2-M9KQR-ABCDE-FGHIJ-KLMNO-PQRST
 或者调整为首组 5 字符，后面 8 组 6 字符，最后一组 0 字符（53 字符对不上 5 的倍数）。
 
 让我重新做这个 math：
+
 - 26 bytes = 208 bits = ceil(208/5) = 42 字符？不对。
 - Ed25519 公钥 = 32 bytes = 256 bits
 - Base32 每符号 5 bits，256 / 5 = 51.2 → 52 字符（最后一位有 4 个有效 bit，填充到 5）
@@ -73,6 +76,7 @@ PB-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXX
 选择方案 C（近 Syncthing 的 7×8-1 格式）用 6 字符分组，最后组 5 字符。
 
 **最终 peer ID 格式**：
+
 ```
 PB-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXX
    └─ 6 ─┘ └─ 6 ─┘ └─ 6 ─┘ └─ 6 ─┘ └─ 6 ─┘ └─ 6 ─┘ └─ 6 ─┘ └─ 6 ─┘ └─ 5 ─┘
@@ -81,6 +85,7 @@ PB-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXX
 ## Luhn Mod 32 校验
 
 标准 Luhn 算法的 base32 变体：
+
 1. 从右向左处理每个 base32 字符（不含 PB- 前缀和分隔符）
 2. 偶数位（从右数，1-indexed）双倍后的值 mod 32
 3. 所有位求和，取 (32 - sum % 32) % 32 为校验码
@@ -89,12 +94,13 @@ PB-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXX
 ## 示例
 
 给定 Ed25519 公钥（hex）：
+
 ```
 3a42c61e9f8b5d72c1a8e0b4f6d7c1a2b3c5e7f0a2b4d6e8f9a0b1c2d3e4f5
 ```
 
 1. Raw bytes → base32: `HKSTQN3BFRSXS43PN5WNO6LQMVZHIYJ5PFSXU2ZPMF4W6QKDIOLA`
-2. 计算 Luhn checksum → `X`  
+2. 计算 Luhn checksum → `X`
 3. 完整：`HKSTQN3BFRSXS43PN5WNO6LQMVZHIYJ5PFSXU2ZPMF4W6QKDIOLAX`
 4. 分组：`PB-HKSTQN-3BFRSX-S43PN5-WNO6LQ-MVZHIY-J5PFSX-U2ZPMF-4W6QKD-IOLAX`
 

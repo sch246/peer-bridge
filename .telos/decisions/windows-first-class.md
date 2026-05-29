@@ -18,6 +18,7 @@
 让 Windows 用户安装 WSL 再运行 peer-bridge。
 
 **否决理由**：
+
 - WSL 是额外的安装负担
 - named pipe / Windows Service 才是原生 Windows 体验
 - 用户明确要求 "Windows first-class"
@@ -27,6 +28,7 @@
 ## Decision
 
 三平台全部 first-class：
+
 - **IPC**: Windows 用 named pipe (`\\.\pipe\peer-bridge-<username>`)，Linux/macOS 用 Unix socket
 - **权限**: Windows 用 NTFS ACL 检查 `identity.key` 权限，Unix 用文件权限 `0600`
 - **daemon 部署**: Windows 支持 `peer-bridge-daemon install-service` 安装为 Windows Service
@@ -36,21 +38,21 @@
 
 ## 具体迁移规则
 
-| 功能 | Linux/macOS | Windows |
-|---|---|---|
-| IPC | `<data_dir>/daemon.sock` (Unix socket) | `\\.\pipe\peer-bridge-<username>` (named pipe) |
-| Daemon 启动 | systemd user service / launchd LaunchAgent | 前台运行，或 `install-service` 安装 Windows Service |
-| identity.key 权限 | `chmod 600` | NTFS ACL: owner = current user, no other read |
-| Hook 脚本 | `.sh` | `.bat` / `.ps1` |
-| Data dir | `~/.peer-bridge/` | `%APPDATA%\peer-bridge\` |
+| 功能              | Linux/macOS                                | Windows                                             |
+| ----------------- | ------------------------------------------ | --------------------------------------------------- |
+| IPC               | `<data_dir>/daemon.sock` (Unix socket)     | `\\.\pipe\peer-bridge-<username>` (named pipe)      |
+| Daemon 启动       | systemd user service / launchd LaunchAgent | 前台运行，或 `install-service` 安装 Windows Service |
+| identity.key 权限 | `chmod 600`                                | NTFS ACL: owner = current user, no other read       |
+| Hook 脚本         | `.sh`                                      | `.bat` / `.ps1`                                     |
+| Data dir          | `~/.peer-bridge/`                          | `%APPDATA%\peer-bridge\`                            |
 
 ## Consequences
 
-| 正面 | 负面 |
-|---|---|
-| 三平台用户体验一致 | 开发和测试工作量 3x |
-| 不强制 WSL | Windows Service 和 named pipe 的 Node.js 支持需要验证 |
-| CI 覆盖保证质量 | NTFS ACL 操作需额外实现 |
+| 正面               | 负面                                                  |
+| ------------------ | ----------------------------------------------------- |
+| 三平台用户体验一致 | 开发和测试工作量 3x                                   |
+| 不强制 WSL         | Windows Service 和 named pipe 的 Node.js 支持需要验证 |
+| CI 覆盖保证质量    | NTFS ACL 操作需额外实现                               |
 
 ## Related
 

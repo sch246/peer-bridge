@@ -28,6 +28,7 @@ WebSocket (WSS) 长连。所有消息为 JSON。
 ### 认证
 
 所有 client → server 消息附签名：
+
 ```json
 {
   "payload": { ... },
@@ -59,6 +60,7 @@ Client → Server。daemon 启动时注册。
 ```
 
 Server → Client:
+
 ```json
 {
   "type": "register_ok",
@@ -79,6 +81,7 @@ Client → Server。查询 peer 在线状态。
 ```
 
 Server → Client:
+
 ```json
 {
   "type": "lookup_result",
@@ -108,6 +111,7 @@ Client → Server。创建邀请码。
 #### invite_redeem → invite_result
 
 Client → Server:
+
 ```json
 {
   "type": "invite_redeem",
@@ -116,6 +120,7 @@ Client → Server:
 ```
 
 Server → Client:
+
 ```json
 {
   "type": "invite_result",
@@ -125,6 +130,7 @@ Server → Client:
 ```
 
 或：
+
 ```json
 { "type": "invite_result", "error": "not_found" }
 ```
@@ -132,6 +138,7 @@ Server → Client:
 #### signal → signal_in
 
 Client → Server（信令转发）:
+
 ```json
 {
   "type": "signal",
@@ -143,6 +150,7 @@ Client → Server（信令转发）:
 ```
 
 Server → Client:
+
 ```json
 {
   "type": "signal_in",
@@ -154,6 +162,7 @@ Server → Client:
 #### notify → notify_in
 
 Client → Server（离线暂存）:
+
 ```json
 {
   "type": "notify",
@@ -165,6 +174,7 @@ Client → Server（离线暂存）:
 ```
 
 Server → Client（接收方上线后）:
+
 ```json
 {
   "type": "notify_in",
@@ -175,13 +185,13 @@ Server → Client（接收方上线后）:
 
 ### Server Limits
 
-| 限制 | 值 |
-|---|---|
-| `max_peers` | 10000 |
-| `max_invites_per_ip_per_hour` | 20 |
-| `max_offline_notify_size` | 1024 bytes |
-| `offline_notify_ttl` | 24 hours |
-| `invite_ttl` | 10 minutes |
+| 限制                          | 值         |
+| ----------------------------- | ---------- |
+| `max_peers`                   | 10000      |
+| `max_invites_per_ip_per_hour` | 20         |
+| `max_offline_notify_size`     | 1024 bytes |
+| `offline_notify_ttl`          | 24 hours   |
+| `invite_ttl`                  | 10 minutes |
 
 ---
 
@@ -250,16 +260,18 @@ Response: { "ack": true }
    - SPKI = SubjectPublicKeyInfo DER 编码
 
 2. **签名 fingerprint**
+
    ```
-   signed_payload = fingerprint_bytes (32) || 
+   signed_payload = fingerprint_bytes (32) ||
                     alice_peer_id_bytes (base32-decoded, 32) ||
                     timestamp_be (8 bytes, big-endian unix seconds) ||
                     nonce (16 bytes, random)
-   
+
    signature = Ed25519_sign(alice_longterm_sk, signed_payload)
    ```
 
 3. **SDP offer**
+
    ```json
    {
      "type": "signal",
@@ -330,6 +342,7 @@ Frame:
 ### 公共字段
 
 所有消息共享：
+
 ```
 { "type": tstr,      // 消息类型标识
   "ts": uint,        // Unix 毫秒时间戳
@@ -340,12 +353,12 @@ Frame:
 
 连接建立后首条消息。
 
-| 字段 | CBOR key | 类型 | 说明 |
-|---|---|---|---|
-| type | 0 | tstr | `"room:hello"` |
-| version | 1 | tstr | `"0.1.0"` |
-| capabilities | 2 | map | 可选能力 |
-| ts | 99 | uint | 时间戳 |
+| 字段         | CBOR key | 类型 | 说明           |
+| ------------ | -------- | ---- | -------------- |
+| type         | 0        | tstr | `"room:hello"` |
+| version      | 1        | tstr | `"0.1.0"`      |
+| capabilities | 2        | map  | 可选能力       |
+| ts           | 99       | uint | 时间戳         |
 
 ```cbor
 {
@@ -358,26 +371,27 @@ Frame:
 
 ### room:ping / room:pong
 
-| 字段 | CBOR key | 类型 |
-|---|---|---|
-| type | 0 | tstr = `"room:ping"` / `"room:pong"` |
-| ts | 99 | uint |
+| 字段 | CBOR key | 类型                                 |
+| ---- | -------- | ------------------------------------ |
+| type | 0        | tstr = `"room:ping"` / `"room:pong"` |
+| ts   | 99       | uint                                 |
 
 ### room:msg
 
 聊天文本消息。
 
-| 字段 | CBOR key | 类型 | 必需 |
-|---|---|---|---|
-| type | 0 | tstr = `"room:msg"` | ✓ |
-| room_id | 1 | bstr (16) | ✓ |
-| sender_peer_id | 2 | bstr (32) | ✓ |
-| body | 3 | tstr | ✓ |
-| kind | 4 | tstr = "text" / "system" | ✓ |
-| seq | 5 | uint | ✓ |
-| ts | 99 | uint (ms) | ✓ |
+| 字段           | CBOR key | 类型                     | 必需 |
+| -------------- | -------- | ------------------------ | ---- |
+| type           | 0        | tstr = `"room:msg"`      | ✓    |
+| room_id        | 1        | bstr (16)                | ✓    |
+| sender_peer_id | 2        | bstr (32)                | ✓    |
+| body           | 3        | tstr                     | ✓    |
+| kind           | 4        | tstr = "text" / "system" | ✓    |
+| seq            | 5        | uint                     | ✓    |
+| ts             | 99       | uint (ms)                | ✓    |
 
 **约束**：
+
 - `body` ≤ 64 KiB
 - `seq` per-sender, per-room 单调递增
 - `kind: "system"` 为控制类消息（加入/离开通知等），第一版仅用于 daemon 自动消息
@@ -398,18 +412,18 @@ Frame:
 
 文件传输提议。
 
-| 字段 | CBOR key | 类型 | 必需 |
-|---|---|---|---|
-| type | 0 | tstr = `"room:file_offer"` | ✓ |
-| room_id | 1 | bstr (16) | ✓ |
-| file_id | 2 | tstr (UUID) | ✓ |
-| sender_peer_id | 3 | bstr (32) | ✓ |
-| name | 4 | tstr | ✓ |
-| size | 5 | uint | ✓ |
-| sha256 | 6 | bstr (32) | ✓ |
-| note | 7 | tstr | - |
-| seq | 8 | uint | ✓ |
-| ts | 99 | uint | ✓ |
+| 字段           | CBOR key | 类型                       | 必需 |
+| -------------- | -------- | -------------------------- | ---- |
+| type           | 0        | tstr = `"room:file_offer"` | ✓    |
+| room_id        | 1        | bstr (16)                  | ✓    |
+| file_id        | 2        | tstr (UUID)                | ✓    |
+| sender_peer_id | 3        | bstr (32)                  | ✓    |
+| name           | 4        | tstr                       | ✓    |
+| size           | 5        | uint                       | ✓    |
+| sha256         | 6        | bstr (32)                  | ✓    |
+| note           | 7        | tstr                       | -    |
+| seq            | 8        | uint                       | ✓    |
+| ts             | 99       | uint                       | ✓    |
 
 ```cbor
 {
@@ -428,44 +442,46 @@ Frame:
 
 ### room:file_accept / room:file_reject
 
-| 字段 | CBOR key | 类型 | 必需 |
-|---|---|---|---|
-| type | 0 | tstr | ✓ |
-| room_id | 1 | bstr (16) | ✓ |
-| file_id | 2 | tstr | ✓ |
-| reason | 3 | tstr | reject 时 |
-| ts | 99 | uint | ✓ |
+| 字段    | CBOR key | 类型      | 必需      |
+| ------- | -------- | --------- | --------- |
+| type    | 0        | tstr      | ✓         |
+| room_id | 1        | bstr (16) | ✓         |
+| file_id | 2        | tstr      | ✓         |
+| reason  | 3        | tstr      | reject 时 |
+| ts      | 99       | uint      | ✓         |
 
 ### room:file_chunk
 
 文件数据块。**只在 bulk channel** 上发送。
 
-| 字段 | CBOR key | 类型 |
-|---|---|---|
-| type | 0 | tstr = `"room:file_chunk"` |
-| file_id | 1 | tstr |
-| seq_num | 2 | uint (0-indexed) |
-| data | 3 | bstr (≤65536 bytes) |
+| 字段    | CBOR key | 类型                       |
+| ------- | -------- | -------------------------- |
+| type    | 0        | tstr = `"room:file_chunk"` |
+| file_id | 1        | tstr                       |
+| seq_num | 2        | uint (0-indexed)           |
+| data    | 3        | bstr (≤65536 bytes)        |
 
 ### room:file_done / room:file_abort
 
-| 字段 | CBOR key | 类型 |
-|---|---|---|
-| type | 0 | tstr |
-| file_id | 1 | tstr |
-| reason | 2 | tstr (abort 时) |
-| ts | 99 | uint |
+| 字段    | CBOR key | 类型            |
+| ------- | -------- | --------------- |
+| type    | 0        | tstr            |
+| file_id | 1        | tstr            |
+| reason  | 2        | tstr (abort 时) |
+| ts      | 99       | uint            |
 
 ### room:resync_request / room:resync_response
 
 丢消息检测和重传。
 
 resync_request:
+
 ```
 { type, room_id, sender: bstr(32), from_seq: uint, to_seq: uint, ts }
 ```
 
 resync_response:
+
 ```
 { type, room_id, messages: [ room:msg... ], ts }
 ```
@@ -488,12 +504,12 @@ room:leave   { type, room_id, ts }
 
 使用 PGP Word List (256 词):
 
-| index | 词 |
-|---|---|
-| 0 | aardvark |
-| 1 | absurd |
-| ... | ... |
-| 255 | zucchini |
+| index | 词       |
+| ----- | -------- |
+| 0     | aardvark |
+| 1     | absurd   |
+| ...   | ...      |
+| 255   | zucchini |
 
 完整列表在 `test-vectors/pgp-word-list.json`。
 
@@ -588,6 +604,7 @@ room_id = SHA-256(input)[0:16]  # first 128 bits → 16 bytes
 ```
 
 编码为 UUID 格式 hex:
+
 ```
 hex(room_id[0:4]) + "-" + hex(room_id[4:6]) + "-" + hex(room_id[6:8]) + "-" +
 hex(room_id[8:10]) + "-" + hex(room_id[10:16])
@@ -621,6 +638,7 @@ crypto_sign_ed25519_sk_to_curve25519(x25519_sk, ed25519_sk);
 ```
 
 JavaScript (tweetnacl):
+
 ```javascript
 const x25519_pk = nacl.sign.publicKey_to_curve25519(ed25519_pk);
 const x25519_sk = nacl.sign.secretKey_to_curve25519(ed25519_sk);
@@ -655,6 +673,7 @@ payload = nacl.box.seal.open(sealed, recipient_x25519_pk, recipient_x25519_sk)
 ```
 
 **离线 notify payload**（在 sealed box 内）：
+
 ```json
 {
   "sender_peer_id": "PB-...",
@@ -670,6 +689,7 @@ payload = nacl.box.seal.open(sealed, recipient_x25519_pk, recipient_x25519_sk)
 ### 离线 notify 重放防护
 
 接收方验证：
+
 1. `timestamp` 在 ±5 分钟内（用于防重放，非精确时钟验证）
 2. `nonce` 在过去 24 小时内未见过（daemon 维护 recent_nonces 集合）
 3. `sender_peer_id` 在 `known_peers.toml` 中
@@ -680,13 +700,13 @@ payload = nacl.box.seal.open(sealed, recipient_x25519_pk, recipient_x25519_sk)
 
 测试向量文件位于 `packages/protocol/test-vectors/`：
 
-| 文件 | 内容 | 组数 |
-|---|---|---|
-| `peer_id.json` | Ed25519 公钥 → Peer ID | 5 |
-| `invite.json` | 随机种子 → 邀请码 + SHA-256 | 3 |
-| `sealed_box.json` | (message, recipient sk/pk) → sealed box + 解密 | 3 |
-| `fingerprint_sig.json` | (fingerprint, peer_id, ts, nonce, sk) → sig | 3 |
-| `cbor_frames.json` | 消息对象 → CBOR frame bytes | 5 |
+| 文件                   | 内容                                           | 组数 |
+| ---------------------- | ---------------------------------------------- | ---- |
+| `peer_id.json`         | Ed25519 公钥 → Peer ID                         | 5    |
+| `invite.json`          | 随机种子 → 邀请码 + SHA-256                    | 3    |
+| `sealed_box.json`      | (message, recipient sk/pk) → sealed box + 解密 | 3    |
+| `fingerprint_sig.json` | (fingerprint, peer_id, ts, nonce, sk) → sig    | 3    |
+| `cbor_frames.json`     | 消息对象 → CBOR frame bytes                    | 5    |
 
 每组包含 `input` 和 `expected` 字段。M1 的 test runner 应加载这些 JSON 文件并验证实现输出匹配 `expected`。
 
@@ -703,22 +723,22 @@ Y=24, Z=25, 2=26, 3=27, 4=28, 5=29, 6=30, 7=31
 
 ## Appendix B: CBOR Integer Keys
 
-| Key | 字段 |
-|---|---|
-| 0 | type |
-| 1 | room_id / version |
-| 2 | sender_peer_id / file_id / capabilities |
-| 3 | body / reason / data |
-| 4 | kind / name |
-| 5 | seq / size |
-| 6 | sha256 |
-| 7 | note |
-| 8 | seq (for file_offer) |
-| 99 | ts (所有消息) |
+| Key | 字段                                    |
+| --- | --------------------------------------- |
+| 0   | type                                    |
+| 1   | room_id / version                       |
+| 2   | sender_peer_id / file_id / capabilities |
+| 3   | body / reason / data                    |
+| 4   | kind / name                             |
+| 5   | seq / size                              |
+| 6   | sha256                                  |
+| 7   | note                                    |
+| 8   | seq (for file_offer)                    |
+| 99  | ts (所有消息)                           |
 
 ## Appendix C: DataChannel 配置
 
-| Channel | 属性 | 用途 |
-|---|---|---|
+| Channel   | 属性                        | 用途                 |
+| --------- | --------------------------- | -------------------- |
 | `control` | ordered=true, reliable=true | 消息、控制、文件提议 |
-| `bulk` | ordered=true, reliable=true | 文件 chunk 传输 |
+| `bulk`    | ordered=true, reliable=true | 文件 chunk 传输      |

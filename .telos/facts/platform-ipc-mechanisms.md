@@ -4,31 +4,33 @@
 
 ## Linux / macOS: Unix Domain Socket
 
-| 属性 | 值 |
-|---|---|
-| **路径** | `<data_dir>/daemon.sock` |
-| **权限** | Unix file permissions (`chmod 600` 等效：仅 owner 可读写) |
-| **进程间** | 同一主机任意用户进程可连接（受权限控制） |
-| **协议** | 原始字节流，上层用 HTTP | 
-| **Node.js API** | `net.createServer()` → `server.listen('/path/to/socket')` |
-| **客户端** | `net.createConnection('/path/to/socket')` 或 `http.request({ socketPath })` |
+| 属性            | 值                                                                          |
+| --------------- | --------------------------------------------------------------------------- |
+| **路径**        | `<data_dir>/daemon.sock`                                                    |
+| **权限**        | Unix file permissions (`chmod 600` 等效：仅 owner 可读写)                   |
+| **进程间**      | 同一主机任意用户进程可连接（受权限控制）                                    |
+| **协议**        | 原始字节流，上层用 HTTP                                                     |
+| **Node.js API** | `net.createServer()` → `server.listen('/path/to/socket')`                   |
+| **客户端**      | `net.createConnection('/path/to/socket')` 或 `http.request({ socketPath })` |
 
 **性质**：
+
 - 文件系统中的 inode，清理不当会留下 stale socket 文件
 - 启动时自动删除旧的 stale socket 文件
 - 进程退出时 socket 文件自动消失（但异常中断可能残留）
 
 ## Windows: Named Pipe
 
-| 属性 | 值 |
-|---|---|
-| **路径** | `\\.\pipe\peer-bridge-<username>` |
-| **权限** | NTFS ACL（daemon 启动时设置仅当前用户可访问） |
-| **进程间** | 同一主机任意用户进程可连接（受 ACL 控制） |
-| **协议** | 原始字节流，上层用 HTTP |
+| 属性            | 值                                                          |
+| --------------- | ----------------------------------------------------------- |
+| **路径**        | `\\.\pipe\peer-bridge-<username>`                           |
+| **权限**        | NTFS ACL（daemon 启动时设置仅当前用户可访问）               |
+| **进程间**      | 同一主机任意用户进程可连接（受 ACL 控制）                   |
+| **协议**        | 原始字节流，上层用 HTTP                                     |
 | **Node.js API** | `net.createServer()` → `server.listen('\\\\.\\pipe\\name')` |
 
 **性质**：
+
 - 不接触文件系统，无 stale 文件问题
 - 进程退出时 pipe 自动销毁
 - Path 长度限制：256 字符
@@ -36,6 +38,7 @@
 ## Node.js 等价抽象
 
 Node.js `net` 模块在 Linux/macOS 和 Windows 上都支持 socket listen / connect：
+
 ```javascript
 import net from 'node:net';
 
@@ -50,10 +53,12 @@ const client = net.createConnection(socketPath);
 ## HTTP over IPC
 
 上层封装 HTTP 协议：
+
 - **Linux/macOS**：`http.request({ socketPath: '/path/to/daemon.sock', path: '/rooms/...' })`
 - **Windows**：Node.js `http` 模块对 named pipe 支持存在限制。某些 Node 版本不支持 `http.request` 直接连 named pipe。需要使用 `net.createConnection` + 手动组装 HTTP
 
 **备选方案**：使用 plain line-delimited JSON（JSONL over socket），而非 HTTP。更简单可移植：
+
 ```
 请求: { "method": "GET", "path": "/rooms", "id": 1 }\n
 响应: { "id": 1, "status": 200, "body": {...} }\n

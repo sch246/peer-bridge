@@ -6,6 +6,7 @@
 ## Context
 
 `peer_chat_wait` 工具需要让 AI 等待聊天室新消息。需要同时解决两个问题：
+
 1. 如何等待新消息（阻塞/长轮询/事件）？
 2. 新消息到达后如何传递给 AI（一次性返回/流式推送）？
 
@@ -16,6 +17,7 @@
 daemon 的 `/events` WS 推事件给 extension → extension 调 `pi.sendUserMessage` 注入消息。
 
 **否决理由**：
+
 - `sendUserMessage` 的语义是"代表用户提问"，不是"推送聊天消息"
 - 会被 compaction 计入用户消息，语义污染
 - 注入 user message 会触发 agent turn，失去 AI 的拉取控制
@@ -25,6 +27,7 @@ daemon 的 `/events` WS 推事件给 extension → extension 调 `pi.sendUserMes
 daemon 写 inbox 目录 → extension 监听文件变化。
 
 **否决理由**：
+
 - 跨平台文件监听实现各异
 - 竞态和部分写入处理复杂
 - 本质上是 hack，不是 API
@@ -46,13 +49,13 @@ daemon 写 inbox 目录 → extension 监听文件变化。
 
 ## Consequences
 
-| 正面 | 负面 |
-|---|---|
-| AI 对流式到达的消息反应更及时 | 长轮询占用 HTTP/IPC 连接（但 daemon 只服务本地连接，数量很小） |
-| 通过 onUpdate 逐条推 partial result，符合 pi 原生 API | `timeout_s` 需合理设置，太短导致频繁轮询开销 |
-| `ctx.signal` abort 语义清晰 | |
-| 50 条上限防资源耗尽 | |
-| 超时优雅降级为 timed_out | |
+| 正面                                                  | 负面                                                           |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| AI 对流式到达的消息反应更及时                         | 长轮询占用 HTTP/IPC 连接（但 daemon 只服务本地连接，数量很小） |
+| 通过 onUpdate 逐条推 partial result，符合 pi 原生 API | `timeout_s` 需合理设置，太短导致频繁轮询开销                   |
+| `ctx.signal` abort 语义清晰                           |                                                                |
+| 50 条上限防资源耗尽                                   |                                                                |
+| 超时优雅降级为 timed_out                              |                                                                |
 
 ## Related
 

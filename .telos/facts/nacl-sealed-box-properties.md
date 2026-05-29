@@ -7,19 +7,20 @@
 来源：libsodium 文档 `crypto_box_seal` / `sealed boxes`
 
 Sealed box 是 **匿名公钥加密**：
+
 - **发送方匿名**：使用一次性 ephemeral keypair + 接收方公钥，不暴露 sender 身份
 - **仅接收方可解密**：只有持有对应私钥的接收方能解密
 - **前向保密**：即使 sender 长期密钥泄漏，历史 sealed box 仍然安全（因为用了 ephemeral key）
 
 ## 密钥大小
 
-| 元素 | 字节 |
-|---|---|
-| Ed25519 公钥（输入） | 32 |
-| Ed25519 私钥（输入） | 64 (含公钥 + 种子) |
-| X25519 公钥（转换后） | 32 |
-| X25519 私钥（转换后） | 32 |
-| 密封密文 overhead | 48 (ephemeral pubkey 32 + MAC 16) |
+| 元素                  | 字节                              |
+| --------------------- | --------------------------------- |
+| Ed25519 公钥（输入）  | 32                                |
+| Ed25519 私钥（输入）  | 64 (含公钥 + 种子)                |
+| X25519 公钥（转换后） | 32                                |
+| X25519 私钥（转换后） | 32                                |
+| 密封密文 overhead     | 48 (ephemeral pubkey 32 + MAC 16) |
 
 ## API
 
@@ -37,13 +38,13 @@ crypto_box_seal_open(message, ciphertext, ciphertext_len, recipient_pk, recipien
 
 ## 安全属性
 
-| 属性 | 说明 |
-|---|---|
-| **机密性** | 只有接收方可以解密 |
-| **完整性** | Poly1305 MAC 防篡改 |
-| **匿名性** | 发送方身份不暴露（ephemeral key） |
-| **重放保护** | 无内置重放保护！上层需要 nonce/timestamp |
-| **1-to-1** | 只能发给单一接收方（不像 Signal 的 sender key 可群发） |
+| 属性         | 说明                                                                 |
+| ------------ | -------------------------------------------------------------------- |
+| **机密性**   | 只有接收方可以解密                                                   |
+| **完整性**   | Poly1305 MAC 防篡改                                                  |
+| **匿名性**   | 发送方身份不暴露（ephemeral key）                                    |
+| **重放保护** | 无内置重放保护！上层需要 nonce/timestamp                             |
+| **1-to-1**   | 只能发给单一接收方（不像 Signal 的 sender key 可群发）               |
 | **大小限制** | 无硬性上限（message + 48 overhead），但 peer-bridge 限制 ≤1KB 策略性 |
 
 ## 对 peer-bridge 的影响

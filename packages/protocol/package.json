@@ -1,0 +1,16 @@
+{
+  "name": "@peer-bridge/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Protocol type definitions and test vectors for peer-bridge",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "test:vectors": "node --import tsx --test test-vectors/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok"
+  }
+}

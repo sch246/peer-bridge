@@ -1,0 +1,17 @@
+{
+  "name": "@peer-bridge/rendezvous",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rendezvous server: signaling relay, invite pairing, federation",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok"
+  },
+  "dependencies": {
+    "@peer-bridge/protocol": "workspace:*"
+  }
+}

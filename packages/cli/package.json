@@ -1,0 +1,21 @@
+{
+  "name": "@peer-bridge/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI: standalone P2P file transfer and daemon management",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "peer-bridge": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok"
+  },
+  "dependencies": {
+    "@peer-bridge/core": "workspace:*",
+    "@peer-bridge/daemon": "workspace:*"
+  }
+}

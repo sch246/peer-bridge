@@ -1,0 +1,17 @@
+{
+  "name": "@peer-bridge/pi-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi-coding-agent extension: bridge tools for peer-bridge",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok"
+  },
+  "dependencies": {
+    "@peer-bridge/daemon": "workspace:*"
+  }
+}

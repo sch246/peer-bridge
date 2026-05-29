@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test artifacts
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+/daemon.db
+/daemon.sock
+
+# Generated identity files (never commit!)
+identity.key
+identity.pub
+known_peers.toml

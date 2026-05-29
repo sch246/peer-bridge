@@ -1,36 +1,33 @@
 # BACKLOG — 已知缺口
 
-M0 agent-blind 检查已完成。
+M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 
 ## M0 退出状态 ✅
 
-- [x] M0 telos bootstrap（7 facts + 9 decisions + 2 tensions）
+- [x] M0 telos bootstrap（9 facts + 12 decisions + 2 tensions）
 - [x] docs/protocol.md（字节级协议规范，10 节 + 3 附录）
 - [x] Test vectors（6 文件，覆盖 5 个原语）
-- [x] **agent-blind 检查 — 通过** ✅
+- [x] agent-blind 检查 — 闭卷重做 + diff + 回填全部完成
+- [x] G1-G5 全部修复（新增 2 facts + 2 decisions）
 
-## Agent-blind 结果
+## Agent-Blind Diff 结果
 
-**任务**：给定 `.telos/` + `docs/protocol.md`，设计 "daemon 收到 file_offer 后的处理流程"
+**G1-G5 已修复**（新增文件）：
+- ✅ G1: 文件落盘路径 → `facts/inbox-directory-structure.md`
+- ✅ G2: SQLite schema → `facts/daemon-sqlite-schema.md`
+- ✅ G3: read_at 未读管理 → `facts/daemon-sqlite-schema.md`（含未读计数查询）
+- ✅ G4: transcript.jsonl 位置与格式 → `decisions/transcript-jsonl-per-room.md`
+- ✅ G5: 1:1 房间隐式创建 → `decisions/implicit-1to1-room-creation.md`
 
-**结果**：agent 产出了 13 步完整流程，与 DESIGN.md §6 完全一致：
-- ✅ Frame 解码、CBOR 字段验证
-- ✅ 身份交叉验证（connection.peer_id vs frame.sender_peer_id）
-- ✅ known_peers trust 检查
-- ✅ room_members 查询
-- ✅ Per-sender seq 跳号检测
-- ✅ 文件大小/磁盘空间策略检查
-- ✅ SQLite + transcript.jsonl 持久化
-- ✅ Unread 计数、长轮询 waiter 中断
-- ✅ /events WebSocket 广播
-- ✅ Notification hook
-- ✅ 明确列出不做什么（不 spawn pi、不注入 session、不自动接受）
-
-**判定**：M0 通过。无新增缺口。
+**Agent 推断 I-1 到 I-7**（低优先级，M1 实现前可补）：
+- I-1: known_peers.toml schema — 已在 protocol.md 中有格式，fact 可补
+- I-2: SQLite schema — 已补（G2）
+- I-3: transcript.jsonl 格式 — 已补（G4）
+- I-4: seq 跨连接生命周期 — 待明确（restart 后从 transcript 恢复）
+- I-5: IPC 事件 schema — 待补充到 protocol 附录
+- I-6: msg 与 file_offer 共享 seq 空间 — 根据 per-sender-seq 决定：是，共享同一序列
+- I-7: Room membership state machine — 第二版功能，第一版不暴露 API
 
 ## 下阶段
 
 → **M1: 协议骨架 + 单机闭环**（开始写代码）
-  - `packages/protocol`: 类型定义 + test vectors runner
-  - `packages/core`: identity / known-peers / invite / 消息编解码 / sealed box
-  - 三平台 CI 矩阵就绪

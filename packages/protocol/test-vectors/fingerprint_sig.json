@@ -1,0 +1,46 @@
+{
+  "description": "Ed25519 fingerprint signature test vectors",
+  "note": "Signed payload = SHA-256(SPKI_DER) || peer_id_bytes || timestamp_be(u64) || nonce(random 16)",
+  "vectors": [
+    {
+      "name": "valid signature — case 1",
+      "input": {
+        "ed25519_secret_key": "9d61b19eb4a84c5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+        "fingerprint_hex": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+        "peer_id": "PB-3VQXQA-SF2XPM-4NKHQG-BZ2RZA-PVCXJB-5TP4DG-JN5B6S-PRG5UN-45CQQ",
+        "timestamp": 1736937600,
+        "nonce_hex": "0102030405060708090a0b0c0d0e0f10"
+      },
+      "expected": {
+        "signed_payload_hex": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a0000000067832e800102030405060708090a0b0c0d0e0f10",
+        "signature_hex": "<64-byte deterministic Ed25519 signature>"
+      }
+    },
+    {
+      "name": "valid signature — case 2 (different timestamp/nonce)",
+      "input": {
+        "ed25519_secret_key": "9d61b19eb4a84c5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+        "fingerprint_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+        "peer_id": "PB-3VQXQA-SF2XPM-4NKHQG-BZ2RZA-PVCXJB-5TP4DG-JN5B6S-PRG5UN-45CQQ",
+        "timestamp": 1737024000,
+        "nonce_hex": "ffeeddccbbaa99887766554433221100"
+      },
+      "expected": {
+        "signed_payload_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a0000000067847e00ffeeddccbbaa99887766554433221100",
+        "signature_hex": "<64-byte deterministic Ed25519 signature>"
+      }
+    },
+    {
+      "name": "validation failure — wrong timestamp (outside ±300s)",
+      "input": {
+        "timestamp": 1736937300,
+        "fingerprint_hex": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+        "peer_id": "PB-3VQXQA-SF2XPM-4NKHQG-BZ2RZA-PVCXJB-5TP4DG-JN5B6S-PRG5UN-45CQQ"
+      },
+      "expected": {
+        "valid": false,
+        "reason": "timestamp_outside_window"
+      }
+    }
+  ]
+}

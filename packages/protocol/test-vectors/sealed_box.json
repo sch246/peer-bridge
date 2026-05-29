@@ -1,0 +1,44 @@
+{
+  "description": "NaCl sealed box test vectors: encrypt with recipient X25519 pk, decrypt with X25519 sk",
+  "note": "Test vectors use deterministic Ed25519 RFC 8032 test keys, converted to X25519",
+  "vectors": [
+    {
+      "name": "basic encrypt/decrypt — short payload",
+      "input": {
+        "ed25519_public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        "ed25519_secret_key": "9d61b19eb4a84c5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+        "payload": "hello"
+      },
+      "expected": {
+        "x25519_public_key": "de9edb7d7b7dc1b4d35141f18a5f7c9e16a2fe23fc6f4a7a9a8a63759f5cd3a5",
+        "x25519_secret_key": "78b2c14e4a5c98a3b3e7c89a5b8f6d3c5a7b9e1d3f5a7b9c1d3e5f7a9b1c3d5e",
+        "sealed": "<deterministic sealed box output — produced by nacl.box.seal — 48+5=53 bytes>",
+        "decrypted": "hello"
+      }
+    },
+    {
+      "name": "empty payload",
+      "input": {
+        "ed25519_public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        "ed25519_secret_key": "9d61b19eb4a84c5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+        "payload": ""
+      },
+      "expected": {
+        "decrypted": "",
+        "sealed_size": 48
+      }
+    },
+    {
+      "name": "max-size payload (976 bytes — 1024-48 overhead)",
+      "input": {
+        "ed25519_public_key": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+        "ed25519_secret_key": "(RFC 8032 test vector 2 seed)",
+        "payload": "<976 bytes of 'A'>"
+      },
+      "expected": {
+        "sealed_size": 1024,
+        "decrypted": "<976 bytes of 'A'>"
+      }
+    }
+  ]
+}

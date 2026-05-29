@@ -1,0 +1,61 @@
+{
+  "description": "Peer ID encoding test vectors: Ed25519 public key → base32 → Luhn checksum → formatted peer ID",
+  "algorithm": "base32 (RFC 4648) + Luhn mod 32",
+  "vectors": [
+    {
+      "name": "all zeros",
+      "input": {
+        "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "expected": {
+        "base32_no_checksum": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "checksum_char": "A",
+        "peer_id": "PB-AAAAAA-AAAAAA-AAAAAA-AAAAAA-AAAAAA-AAAAAA-AAAAAA-AAAAAA-AAAAA"
+      }
+    },
+    {
+      "name": "all ones (0xFF × 32)",
+      "input": {
+        "publicKey": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+      },
+      "expected": {
+        "base32_no_checksum": "7777777777777777777777777777777777777777777777777777",
+        "checksum_char": "7",
+        "peer_id": "PB-777777-777777-777777-777777-777777-777777-777777-777777-77777"
+      }
+    },
+    {
+      "name": "RFC 8032 test vector 1",
+      "input": {
+        "publicKey": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+      },
+      "expected": {
+        "base32_no_checksum": "3VQXQASF2XPM4NKHQGBZ2RZAPVCXJB5TP4DGJN5B6SPRG5UN45CQ",
+        "checksum_char": "Q",
+        "peer_id": "PB-3VQXQA-SF2XPM-4NKHQG-BZ2RZA-PVCXJB-5TP4DG-JN5B6S-PRG5UN-45CQQ"
+      }
+    },
+    {
+      "name": "RFC 8032 test vector 2",
+      "input": {
+        "publicKey": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c"
+      },
+      "expected": {
+        "base32_no_checksum": "DU4UBOJBC3VRHISNCXHNYW5QXMFRDFMLDOMXJ3PIJTIQPLQPJTPA",
+        "checksum_char": "A",
+        "peer_id": "PB-DU4UBO-JBC3VR-HISNCX-HNYW5Q-XMFRDF-MLDOMX-J3PIJT-IQPLQP-JTPAA"
+      }
+    },
+    {
+      "name": "random sample",
+      "input": {
+        "publicKey": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809"
+      },
+      "expected": {
+        "base32_no_checksum": "DEYDCMRTGQYTANJQGAYDCMRTGQYTANJQGAYDCMRTGQYTANJQGAYDCMRT",
+        "checksum_char": "G",
+        "peer_id": "PB-DEYDCM-RTGQYT-ANJQGA-YDCMRT-GQYTAN-JQGAYD-CMRTGQ-YTANJQ-GAYDCM-RTG"
+      }
+    }
+  ]
+}

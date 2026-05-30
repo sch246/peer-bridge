@@ -4,3 +4,5 @@ export * from './known-peers.js';
 export * from './sealed-box.js';
 export * from './fingerprint.js';
 export * from './invite.js';
+export { RendezvousClient, RendezvousError } from './signaling.js';
+export type { FsmState, RendezvousClientEvents } from './signaling.js';

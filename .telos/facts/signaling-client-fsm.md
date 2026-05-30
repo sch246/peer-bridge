@@ -53,9 +53,26 @@ Explicit `disconnect()` always terminates to `'disconnected'` and **cancels any 
 
 Callers subscribe to `client.on('state_change', (newState, oldState) => ...)`:
 
-- Emitted on every state transition, including reconnect cycle states.
-- `'reconnect'` event carries `(attempt: number, delayMs: number)` — emitted when a backoff timer is scheduled.
-- `'reconnect_failed'` event carries `(attempts: number)` — emitted when max attempts exhausted and terminal `'disconnected'` is reached.
+| Event                | Payload                                        | When                                                                                                                             | Cite                   |
+| -------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `'state_change'`     | `(newState, oldState)`                         | On every state transition, including reconnect cycle states.                                                                     | —                      |
+| `'reconnect'`        | `(attempt: number, delayMs: number)`           | When a backoff timer is scheduled.                                                                                               | —                      |
+| `'reconnect_failed'` | `(attempts: number)`                           | When max attempts exhausted and terminal `'disconnected'` is reached.                                                            | —                      |
+| `'registered'`       | `(server_id: string, federation_size: number)` | After receiving `register_ok`, before `state_change` to `'ready'`. Carries server identity for fingerprint pinning.              | `signaling.ts:447`     |
+| `'disconnect'`       | `(code: number, reason: string)`               | After WS close. Provides close code + reason from the WS layer; precedes `state_change` to `'reconnecting'` or `'disconnected'`. | `signaling.ts:567,248` |
+
+## Close-code response strategy
+
+When the WebSocket closes, the FSM transition depends on cause, not specifically on close code. The implementation's strategy (`signaling.ts:533-590` close handler):
+
+- **Explicit `disconnect()` call**: transitions to `'disconnected'` with no reconnect.
+- **Server close from `'ready'` or `'reconnecting'`**: transitions to `'reconnecting'` and schedules backoff reconnect, regardless of close code (`1000`, `1008`, `1011`, `1013`, `1006`).
+- **Close from `'connecting'` or `'registering'` while `_reconnectAttempt > 0`** (mid-reconnect-cycle): continues the reconnect cycle — the close handler transitions to `'reconnecting'` and schedules the next attempt.
+- **Close from `'connecting'` or `'registering'` on first attempt** (`_reconnectAttempt === 0`): rejects the `connect()` Promise with `'register_failed'` or `'ws_open_failed'`; no auto-reconnect. The caller must re-invoke `connect()`.
+
+**M2 does NOT discriminate close codes** for retry/fatal classification. All non-explicit closes from established states are treated as recoverable. This is a deliberate M2 simplification — close-code-aware retry policies (e.g., `1008` → fatal, `1013` → backoff longer) are deferred until production observation justifies them.
+
+See `signaling-message-fields.md` §Error transport channel B for the close-code semantic table; this fact does not duplicate that.
 
 ## Backoff Schedule
 
@@ -93,7 +110,7 @@ These were considered during implementation (brief #2d):
 
 - This is the **client-side observable contract**. Does not constrain server-side state machine (which has its own connection lifecycle per [disconnect-immediate-offline](../decisions/disconnect-immediate-offline.md)).
 - The backoff schedule describes the `reconnecting → connecting` delay. It does not cover WebSocket-level timeouts (connection timeout, idle timeout) — those are implementation-level platform behaviors.
-- `'reconnecting'` state exists only when the close was **involuntary** from `'ready'`. Closes from `'connecting'` or `'registering'` (i.e., before reaching `'ready'`) are not covered by this contract — the client may re-attempt connect or fail immediately depending on the error.
+- Closes from `'connecting'` or `'registering'` are handled per the close-code response strategy above: mid-reconnect-cycle retries continue, but a first-attempt failure rejects `connect()`. The Backoff schedule applies only to `'reconnecting'` → `'connecting'` transitions, not to WebSocket-level connection or idle timeouts (those are platform behaviors).
 
 ## Related
 

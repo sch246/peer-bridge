@@ -43,6 +43,6 @@ limit, no periodic sweep.
 
 ## Reference
 
-- Investigation: `m2-exit-investigation.md` §T-7, §T-8, §A2.
+- Investigation: `.telos/audit-trails/m2-exit-investigation-2026-05-30.md` §T-7, §T-8, §A2.
 - Code: `packages/rendezvous/src/handlers/notify.ts:59-68` (insertion);
   `register.ts:80-84` (lazy TTL cleanup).

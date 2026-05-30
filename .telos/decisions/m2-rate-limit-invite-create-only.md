@@ -40,4 +40,4 @@ M2 rendezvous server rate-limits ONLY `invite_create` per source IP. `register`,
 
 - `packages/rendezvous/src/rate-limit.ts:1-4` (the TODO comment acknowledging the gap)
 - DESIGN.md §12 line 925 (the spec promise)
-- Investigation: `m2-exit-investigation.md` §T-12, §A3.
+- Investigation: `.telos/audit-trails/m2-exit-investigation-2026-05-30.md` §T-12, §A3.

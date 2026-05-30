@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: ['20', '22']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9.0.0'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Build protocol
+        shell: bash
+        run: pnpm --filter @peer-bridge/protocol build
+
+      - name: Build core
+        shell: bash
+        run: pnpm --filter @peer-bridge/core build
+
+      - name: Test protocol test-vectors
+        shell: bash
+        run: npx tsx --test packages/protocol/test-vectors/runner.test.ts
+
+      - name: Test core crypto
+        shell: bash
+        run: npx tsx --test packages/core/src/crypto.test.ts
+
+      - name: Test core vectors
+        shell: bash
+        run: npx tsx --test packages/core/src/vectors.test.ts
+
+      - name: Test core known-peers
+        shell: bash
+        run: npx tsx --test packages/core/src/known-peers.test.ts
+
+      - name: Test core invite
+        shell: bash
+        run: npx tsx --test packages/core/src/invite.test.ts

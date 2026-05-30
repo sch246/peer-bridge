@@ -162,6 +162,25 @@ Items found during M2 exit investigation that are NOT block-M2-exit but should b
 
 Source: `.telos/audit-trails/m2-exit-investigation-2026-05-30.md` §8.
 
+## M3 启动准入
+
+M3 sanity probe 过（commit `7f2e7ac`）：`node-datachannel@0.32.3` 三平台 × Node 22 全绿（CI run [26687227899](https://github.com/sch246/peer-bridge/actions/runs/26687227899)）。选型可行。
+
+M3 启动 audit 进行中：`.telos/audit-trails/m3-startup-audit-2026-05-30.md`。Audit 结论是 **M3 不可直接启动，必须先 sediment 6 个 block-M3-start telos 项**（§C.1）：
+
+- [ ] **U-1**: `decisions/m3-cli-p2p-bypass-daemon.md` — M3 CLI 绕过 daemon 的 P2P 接入路径
+- [ ] **U-2**: `decisions/datachannel-negotiation-two-channels.md` — control + bulk 双通道协商方式
+- [ ] **U-3**: `facts/default-ice-servers.md` — 默认 STUN 服务器列表 + privacy 声明
+- [ ] **U-4**: `facts/peerconnection-lifecycle.md` — PeerConnection 建立/关闭/忽略超时触发
+- [ ] **U-5+U-6**: `decisions/datachannel-error-protocol.md` — fingerprint verify / capabilities / DataChannel open 超时等错误路径。含 `room:hello` 版本不匹配行为
+- [ ] **U-7**: `facts/p2p-signal-payload-format.md` — `signal.payload` 内容 JSON sub-envelope（webrtc_offer/webrtc_answer/ice_candidate）
+
+另有 5 个 block-M3-exit 项（U-8 · bulk 流控阈值 / U-9 · 进度上报频率 / U-10 · SHA-256 校验时机 / U-11 · CLI recv 模式 / U-12 · P2P 错误码 taxonomy）及 3 个 cross-slice 项（U-13 · DataChannel 重连 / U-14 · capabilities 枚举 / U-15 · M3 文件与 M4 transcript 兼容）可边实施边沉淀。
+
+Scope ledger（详 audit §B，12 项明确不在 M3）作为隐性 scope creep 护栏：文件断点续传 / SQLite room state / daemon + IPC / 通知 hook / 离线暂存拉取 / 多人房间 / resync / 联邦 / pi extension / ICE restart / 预览缩略图 / 群组加密 forward secrecy。
+
+下一步：pre-impl agent-blind check（闭卷 M3 设计 vs telos）→ diff vs audit → 合并后一次性 sediment。
+
 ## 下阶段
 
 → **M3: P2P 传输**（M2 退出条件满足后）

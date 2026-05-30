@@ -150,10 +150,10 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
   - T-12: 除 `invite_create` 外的 per-IP rate limit 具体阈值（DESIGN.md §12 仅写"必须做"未枚举数值）→ 需 fact 文件绑定数值
   - T-13: error response envelope 完整 spec（当前仅 `invite_result.error: "not_found"` 定义了一个错误值）→ 需 fact 文件
 - [ ] **Resolve timing/state-machine MISSING items**（来源：本 commit 的 pre-M2 audit `m2-pre-impl-checks.md` §3）：
-  - Q3 (peer disconnect behavior: immediate offline vs grace period) — [stuck] 实现者无法合理推断，需 pre-impl decision
-  - Q4 (concurrent in-flight requests + response correlation) — [stuck] 协议消息无 `request_id` 字段，需先确定 request-response 关联机制
+  - Q3 (peer disconnect behavior: immediate offline vs grace period) — ✅ resolved by `decisions/disconnect-immediate-offline.md`（commit `4146b95`）
+  - Q4 (concurrent in-flight requests + response correlation) — ✅ resolved by `decisions/signaling-fifo-no-request-id.md`（commit `4146b95`）
   - Q7 (invite_record deletion criteria: cancel + disconnect cases) — [choice] 实现者可在已知约束（expiry + single-use）下决定，但应记录决策
-  - Q8 (reconnect: client re-sends register vs server preserves session) — [stuck] 无任何 source 讨论 reconnect，需 pre-impl decision
+  - Q8 (reconnect: client re-sends register vs server preserves session) — ✅ resolved by `decisions/reconnect-requires-reregister.md`（commit `4146b95`）
 - [ ] **Verify rendezvous dependencies**：`packages/rendezvous/package.json` 添加 `fastify` + `ws` + `@fastify/websocket`（`facts/rendezvous-tech-stack.md` 已将其标注为 gap："M2 实现时添加"）
 
 ## 其他 BACKLOG（不阻塞 M2）

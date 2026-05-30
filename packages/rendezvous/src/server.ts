@@ -15,16 +15,8 @@ import type { WebSocket } from '@fastify/websocket';
 import { createState, type ServerState } from './state.js';
 import { initCrypto, verifySignature, decodePeerIdSafe } from './auth.js';
 import { RateLimiter } from './rate-limit.js';
-import {
-  handleRegister,
-  sendRegisterOk,
-  type RegisterPayload,
-} from './handlers/register.js';
-import {
-  handleLookup,
-  sendLookupResult,
-  type LookupPayload,
-} from './handlers/lookup.js';
+import { handleRegister, sendRegisterOk, type RegisterPayload } from './handlers/register.js';
+import { handleLookup, sendLookupResult, type LookupPayload } from './handlers/lookup.js';
 import {
   handleInviteCreate,
   sendInviteResult,
@@ -231,11 +223,7 @@ function dispatchRegister(
   sendRegisterOk(socket, serverId, state.federationSize());
 }
 
-function dispatchLookup(
-  state: ServerState,
-  socket: Ws,
-  payload: Record<string, unknown>,
-): void {
+function dispatchLookup(state: ServerState, socket: Ws, payload: Record<string, unknown>): void {
   const result = handleLookup(state, payload as unknown as LookupPayload);
   sendLookupResult(socket, result);
 }

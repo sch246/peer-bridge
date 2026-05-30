@@ -9,12 +9,7 @@ import { createHash } from 'node:crypto';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { createServer, type ServerDeps } from '../src/server.js';
 import { createState } from '../src/state.js';
-import {
-  initCrypto,
-  verifySignature,
-  decodePeerIdSafe,
-  isTimestampValid,
-} from '../src/auth.js';
+import { initCrypto, verifySignature, decodePeerIdSafe, isTimestampValid } from '../src/auth.js';
 import { RateLimiter } from '../src/rate-limit.js';
 import { loadConfig, DEFAULTS } from '../src/config.js';
 import { handleRegister, sendRegisterOk } from '../src/handlers/register.js';
@@ -68,19 +63,13 @@ function makePeerId(pubkey: Uint8Array): string {
   return encodePeerId(pubkey);
 }
 
-function signPayload(
-  payload: Record<string, unknown>,
-  ts: string,
-  secretKey: Uint8Array,
-): string {
+function signPayload(payload: Record<string, unknown>, ts: string, secretKey: Uint8Array): string {
   const payloadJson = JSON.stringify(payload);
   const messageBytes = Buffer.from(payloadJson + ts, 'utf-8');
   const hash = createHash('sha256').update(messageBytes).digest();
   const sig = sodium.crypto_sign_detached(hash, secretKey);
   return Buffer.from(sig).toString('base64');
 }
-
-
 
 // ── State tests (D1: disconnect-immediate-offline) ──
 
@@ -312,10 +301,15 @@ describe('handleRegister', () => {
     const sock = mockSocket();
     const limits = { max_peers: 10000 } as any;
 
-    const result = handleRegister(state, sock, {
-      peer_id: peerId,
-      capabilities: { webrtc: true },
-    }, limits);
+    const result = handleRegister(
+      state,
+      sock,
+      {
+        peer_id: peerId,
+        capabilities: { webrtc: true },
+      },
+      limits,
+    );
 
     assert.strictEqual(result.success, true);
     assert.strictEqual(state.peerCount(), 1);
@@ -327,10 +321,15 @@ describe('handleRegister', () => {
     const sock = mockSocket();
     const limits = { max_peers: 10000 } as any;
 
-    const result = handleRegister(state, sock, {
-      peer_id: '',
-      capabilities: {},
-    }, limits);
+    const result = handleRegister(
+      state,
+      sock,
+      {
+        peer_id: '',
+        capabilities: {},
+      },
+      limits,
+    );
 
     assert.strictEqual(result.success, false);
     assert.strictEqual(result.closeCode, 1008);
@@ -341,10 +340,15 @@ describe('handleRegister', () => {
     const sock = mockSocket();
     const limits = { max_peers: 10000 } as any;
 
-    const result = handleRegister(state, sock, {
-      peer_id: 'invalid-peer-id',
-      capabilities: {},
-    }, limits);
+    const result = handleRegister(
+      state,
+      sock,
+      {
+        peer_id: 'invalid-peer-id',
+        capabilities: {},
+      },
+      limits,
+    );
 
     assert.strictEqual(result.success, false);
     assert.strictEqual(result.closeCode, 1008);
@@ -373,10 +377,15 @@ describe('handleRegister', () => {
     const sock = mockSocket();
     const limits = { max_peers: 0 } as any; // zero capacity
 
-    const result = handleRegister(state, sock, {
-      peer_id: peerId,
-      capabilities: {},
-    }, limits);
+    const result = handleRegister(
+      state,
+      sock,
+      {
+        peer_id: peerId,
+        capabilities: {},
+      },
+      limits,
+    );
 
     assert.strictEqual(result.success, false);
     assert.strictEqual(result.closeCode, 1013);
@@ -393,10 +402,15 @@ describe('handleRegister', () => {
       { sealed_box: 'BBBB', queued_at: new Date().toISOString() },
     ]);
 
-    const result = handleRegister(state, sock, {
-      peer_id: peerId,
-      capabilities: {},
-    }, limits);
+    const result = handleRegister(
+      state,
+      sock,
+      {
+        peer_id: peerId,
+        capabilities: {},
+      },
+      limits,
+    );
 
     assert.strictEqual(result.success, true);
     assert.ok(result.pending_notifications);
@@ -420,10 +434,15 @@ describe('handleRegister', () => {
       },
     ]);
 
-    const result = handleRegister(state, sock, {
-      peer_id: peerId,
-      capabilities: {},
-    }, limits);
+    const result = handleRegister(
+      state,
+      sock,
+      {
+        peer_id: peerId,
+        capabilities: {},
+      },
+      limits,
+    );
 
     assert.strictEqual(result.pending_notifications!.length, 1);
     assert.strictEqual(result.pending_notifications![0].sealed_box, 'FRESH');
@@ -760,7 +779,9 @@ describe('Config', () => {
   it('loadConfig parses valid TOML', () => {
     // Create a temp config inline
     const path = 'test-server.toml';
-    writeFileSync(path, `
+    writeFileSync(
+      path,
+      `
 [server]
 listen = "0.0.0.0:9999"
 public_url = "ws://localhost:9999"
@@ -770,13 +791,18 @@ max_peers = 500
 max_invites_per_ip_per_hour = 10
 max_offline_notify_size = 512
 offline_notify_ttl_hours = 12
-`);
+`,
+    );
     try {
       const config = loadConfig(path);
       assert.strictEqual(config.server.listen, '0.0.0.0:9999');
       assert.strictEqual(config.limits.max_peers, 500);
     } finally {
-      try { unlinkSync(path); } catch { /* ignore */ }
+      try {
+        unlinkSync(path);
+      } catch {
+        /* ignore */
+      }
     }
   });
 
@@ -864,12 +890,14 @@ describe('Server integration', () => {
           ts,
           kp.secretKey,
         );
-        ws.send(JSON.stringify({
-          type: 'register',
-          payload: { peer_id: peerId, capabilities: { webrtc: true } },
-          sig,
-          ts,
-        }));
+        ws.send(
+          JSON.stringify({
+            type: 'register',
+            payload: { peer_id: peerId, capabilities: { webrtc: true } },
+            sig,
+            ts,
+          }),
+        );
       });
 
       ws.on('message', (raw: Buffer) => {
@@ -899,12 +927,14 @@ describe('Server integration', () => {
     await new Promise<void>((resolve, reject) => {
       ws.on('open', () => {
         const ts = new Date().toISOString();
-        ws.send(JSON.stringify({
-          type: 'register',
-          payload: { peer_id: peerId, capabilities: {} },
-          sig: Buffer.from(new Uint8Array(64).fill(0x00)).toString('base64'),
-          ts,
-        }));
+        ws.send(
+          JSON.stringify({
+            type: 'register',
+            payload: { peer_id: peerId, capabilities: {} },
+            sig: Buffer.from(new Uint8Array(64).fill(0x00)).toString('base64'),
+            ts,
+          }),
+        );
       });
 
       ws.on('close', (code: number) => {
@@ -923,17 +953,15 @@ describe('Server integration', () => {
     await new Promise<void>((resolve, reject) => {
       ws.on('open', () => {
         const ts = new Date().toISOString();
-        const sig = signPayload(
-          { peer_id: peerId, capabilities: {} },
-          ts,
-          kp.secretKey,
+        const sig = signPayload({ peer_id: peerId, capabilities: {} }, ts, kp.secretKey);
+        ws.send(
+          JSON.stringify({
+            type: 'register',
+            payload: { peer_id: peerId, capabilities: {} },
+            sig,
+            ts,
+          }),
         );
-        ws.send(JSON.stringify({
-          type: 'register',
-          payload: { peer_id: peerId, capabilities: {} },
-          sig,
-          ts,
-        }));
       });
 
       let registered = false;
@@ -944,12 +972,14 @@ describe('Server integration', () => {
           // Now lookup self
           const ts = new Date().toISOString();
           const sig = signPayload({ peer_id: peerId }, ts, kp.secretKey);
-          ws.send(JSON.stringify({
-            type: 'lookup',
-            payload: { peer_id: peerId },
-            sig,
-            ts,
-          }));
+          ws.send(
+            JSON.stringify({
+              type: 'lookup',
+              payload: { peer_id: peerId },
+              sig,
+              ts,
+            }),
+          );
         } else if (msg.type === 'lookup_result') {
           assert.strictEqual(msg.found, true);
           resolve();
@@ -969,20 +999,18 @@ describe('Server integration', () => {
     const { default: WebSocket } = await import('ws');
     const ws1 = new WebSocket(`${wsBaseUrl}/ws`);
     const ts = new Date().toISOString();
-    const sig = signPayload(
-      { peer_id: peerId, capabilities: {} },
-      ts,
-      kp.secretKey,
-    );
+    const sig = signPayload({ peer_id: peerId, capabilities: {} }, ts, kp.secretKey);
 
     await new Promise<void>((resolve, reject) => {
       ws1.on('open', () => {
-        ws1.send(JSON.stringify({
-          type: 'register',
-          payload: { peer_id: peerId, capabilities: {} },
-          sig,
-          ts,
-        }));
+        ws1.send(
+          JSON.stringify({
+            type: 'register',
+            payload: { peer_id: peerId, capabilities: {} },
+            sig,
+            ts,
+          }),
+        );
       });
       ws1.on('message', (raw: Buffer) => {
         const msg = JSON.parse(raw.toString());

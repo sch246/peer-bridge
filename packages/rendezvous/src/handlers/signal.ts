@@ -19,11 +19,7 @@ export interface SignalPayload {
   payload: string;
 }
 
-export function handleSignal(
-  state: ServerState,
-  payload: SignalPayload,
-  fromPeerId: string,
-): void {
+export function handleSignal(state: ServerState, payload: SignalPayload, fromPeerId: string): void {
   if (!payload.to || typeof payload.to !== 'string') return;
 
   const target = state.peer_registrations.get(payload.to);

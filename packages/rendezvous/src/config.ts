@@ -53,9 +53,7 @@ export function loadConfig(path: string): RendezvousConfig {
   const config: RendezvousConfig = {
     server: { ...DEFAULTS.server, ...((parsed.server as Record<string, unknown>) ?? {}) },
     limits: { ...DEFAULTS.limits, ...((parsed.limits as Record<string, unknown>) ?? {}) },
-    federation: Array.isArray(parsed.federation)
-      ? (parsed.federation as FederationPeer[])
-      : [],
+    federation: Array.isArray(parsed.federation) ? (parsed.federation as FederationPeer[]) : [],
   };
 
   validateConfig(config);

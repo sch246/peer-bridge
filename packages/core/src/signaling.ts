@@ -24,7 +24,10 @@ import { getPeerId, type SignKeyPair } from './identity.js';
 // Chose discriminated union over boolean flags (isConnecting, isReady, etc.)
 // because it eliminates invalid states like { connecting: true, ready: true }
 // and makes transition ordering explicit in the type system.
-export type FsmState = 'disconnected' | 'connecting' | 'registering' | 'ready';
+// [choice] 2d: 'reconnecting' as a 5th FSM state (vs reusing 'connecting').
+// Semantic distinction matters for callers: reconnecting means we had a
+// session and are recovering; connecting means fresh start.
+export type FsmState = 'disconnected' | 'connecting' | 'registering' | 'ready' | 'reconnecting';
 
 export interface RendezvousClientEvents {
   state_change: (from: FsmState, to: FsmState) => void;
@@ -33,17 +36,33 @@ export interface RendezvousClientEvents {
   error: (err: Error) => void;
   signal_in: (from: string, payload: string) => void;
   notify_in: (sealed_box: string, queued_at: string) => void;
+  // [choice] 2d: reconnect event signature is (attempt, delayMs).
+  // Including delayMs lets callers display backoff progress.
+  reconnect: (attempt: number, delayMs: number) => void;
+  // [choice] 2d: reconnect_failed as a distinct event (vs re-emitting disconnect
+  // with a reason). Allows callers to distinguish "gave up after retries" from
+  // "voluntary/normal disconnect".
+  reconnect_failed: () => void;
+}
+
+// [choice] 2d: ReconnectOptions exposes baseDelayMs for test scaling.
+// Production default is 1000ms; tests can set baseDelayMs = 10 for fast runs.
+export interface ReconnectOptions {
+  enabled: boolean;
+  /** Base delay for first reconnect attempt in ms (default 1000). */
+  baseDelayMs?: number;
+  /** Maximum reconnect attempts (default 6). */
+  maxAttempts?: number;
 }
 
 export interface RendezvousClientOptions {
   keypair: SignKeyPair;
   url: string;
   // [choice] C4: Exponential backoff 1s/2s/4s/8s/16s/32s, max 6 retries.
-  // Documented but NOT implemented in 2a. Reconnect stub throws if enabled.
   // Chose exponential over linear/fixed because network recovery times are
   // bimodal (fast jitter vs. long outage) and exponential crowds well under
   // shared-throttle conditions.
-  reconnect?: { enabled: boolean };
+  reconnect?: ReconnectOptions;
   /** Timeout waiting for register_ok after sending register (default 10s). */
   registerTimeoutMs?: number;
 }
@@ -91,6 +110,8 @@ export class RendezvousError extends Error {
 // ═════════════════════════════════════════════════════════════════════════════
 
 const DEFAULT_REGISTER_TIMEOUT_MS = 10_000;
+const DEFAULT_BASE_DELAY_MS = 1000;
+const DEFAULT_MAX_ATTEMPTS = 6;
 
 // [choice] C2: Hybrid API — Promises for request/response (later in 2b),
 // EventEmitter for pushes + lifecycle. Chose hybrid over pure-EventEmitter
@@ -105,7 +126,15 @@ export class RendezvousClient extends EventEmitter {
   private _url: string;
   private _peerId: string;
   private _reconnectEnabled: boolean;
+  private _baseDelayMs: number;
+  private _maxAttempts: number;
   private _registerTimeoutMs: number;
+  // [choice] 2d: setTimeout-based backoff timer (vs while-loop+await-sleep).
+  // setTimeout integrates with disconnect() — we store the handle and clear
+  // it on explicit disconnect to prevent in-flight reconnect from continuing.
+  private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _reconnectAttempt: number = 0;
+  private _explicitDisconnect: boolean = false;
   private _registerResolver: {
     resolve: (msg: { server_id: string; federation_size: number }) => void;
     reject: (err: Error) => void;
@@ -130,16 +159,9 @@ export class RendezvousClient extends EventEmitter {
     this._url = options.url;
     this._peerId = getPeerId(options.keypair.publicKey);
     this._reconnectEnabled = options.reconnect?.enabled ?? false;
+    this._baseDelayMs = options.reconnect?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
+    this._maxAttempts = options.reconnect?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
     this._registerTimeoutMs = options.registerTimeoutMs ?? DEFAULT_REGISTER_TIMEOUT_MS;
-
-    // [choice] C4: reconnect is documented but NOT implemented in 2a.
-    // Throw NotImplementedError if enabled=true to prevent silent failure.
-    if (this._reconnectEnabled) {
-      throw new RendezvousError(
-        'not_implemented',
-        'Reconnect is not yet implemented (M2 brief #2d). Set reconnect.enabled to false.',
-      );
-    }
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
@@ -162,6 +184,10 @@ export class RendezvousClient extends EventEmitter {
         `Cannot connect when state is "${this._state}". Must be "disconnected".`,
       );
     }
+
+    // Reset reconnect state for fresh explicit connection
+    this._explicitDisconnect = false;
+    this._reconnectAttempt = 0;
 
     this._transition('connecting');
 
@@ -199,12 +225,27 @@ export class RendezvousClient extends EventEmitter {
   /**
    * Gracefully close the WebSocket. FSM transitions to 'disconnected',
    * 'disconnect' event fires (via the WS close handler).
+   *
+   * If a reconnect attempt is in-flight (reconnecting state with pending
+   * backoff timer), the timer is cancelled.
    */
   disconnect(): void {
+    this._explicitDisconnect = true;
+
+    // Cancel any pending reconnect backoff timer
+    if (this._reconnectTimer !== null) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+
     if (this._ws) {
       this._ws.close(1000, 'Client disconnect');
       // Don't null _ws — let the close handler do it, so 'disconnect' fires
       // with the actual close code/reason.
+    } else if (this._state === 'reconnecting') {
+      // No active WS (between backoff attempts). Transition directly.
+      this._transition('disconnected');
+      this.emit('disconnect', 1000, 'Client disconnect');
     }
   }
 
@@ -503,6 +544,10 @@ export class RendezvousClient extends EventEmitter {
       }
 
       // Reject pending request if in-flight
+      // [choice] 2d Q-N4: pending invite_create (expectedType 'invite_result') is
+      // rejected here with 'connection_closed'. No special drop-list code — the
+      // natural behavior of "reject and clear" means the client does NOT auto-resend
+      // after reconnect. The caller must re-issue.
       if (this._pendingRequest) {
         const pending = this._pendingRequest;
         this._pendingRequest = null;
@@ -515,10 +560,30 @@ export class RendezvousClient extends EventEmitter {
       }
 
       const wasDisconnected = this._state === 'disconnected';
-      if (!wasDisconnected) {
-        this._transition('disconnected');
+      if (wasDisconnected) {
+        return;
       }
+
       this.emit('disconnect', code, reason.toString());
+
+      // [choice] C4 + D3: reconnect on involuntary close from ready/reconnecting,
+      // or during an active reconnect cycle (connecting/registering with _reconnectAttempt > 0).
+      // Only if reconnect is enabled, not an explicit client disconnect, and
+      // we were in a state that had (or was recovering) an established session.
+      if (
+        this._reconnectEnabled &&
+        !this._explicitDisconnect &&
+        (this._state === 'ready' ||
+         this._state === 'reconnecting' ||
+         (this._reconnectAttempt > 0 &&
+          (this._state === 'connecting' || this._state === 'registering')))
+      ) {
+        this._transition('reconnecting');
+        this._scheduleReconnect();
+        return;
+      }
+
+      this._transition('disconnected');
     });
 
     ws.on('error', (err: Error) => {
@@ -537,6 +602,85 @@ export class RendezvousClient extends EventEmitter {
     const hash = createHash('sha256').update(messageBytes).digest();
     const sig = sodium.crypto_sign_detached(hash, this._keypair.secretKey);
     return Buffer.from(sig).toString('base64');
+  }
+
+  // ── Reconnect (D3 + C4) ────────────────────────────────────────────────
+
+  /**
+   * Schedule the next reconnect attempt with exponential backoff.
+   *
+   * Backoff per C4: baseDelay * 2^(attempt-1), i.e. 1s/2s/4s/8s/16s/32s.
+   * [choice] 2d: setTimeout-based (vs while-loop+await-sleep). Stores handle
+   * for disconnect() to cancel, preventing in-flight reconnect on explicit close.
+   */
+  private _scheduleReconnect(): void {
+    this._reconnectAttempt++;
+
+    if (this._reconnectAttempt > this._maxAttempts) {
+      this._reconnectTimer = null;
+      this.emit('reconnect_failed');
+      this._transition('disconnected');
+      return;
+    }
+
+    const delayMs = this._baseDelayMs * 2 ** (this._reconnectAttempt - 1);
+    this.emit('reconnect', this._reconnectAttempt, delayMs);
+
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      this._doReconnect();
+    }, delayMs);
+  }
+
+  /**
+   * Attempt one reconnect cycle: open new WS, register from scratch per D3.
+   * D3 (reconnect-requires-reregister) mandates fresh register on every
+   * reconnect — no session resume, no token, no implicit identity binding.
+   *
+   * On failure (register timeout, WS close, etc.), the close handler is the
+   * sole driver of the next attempt — this method catches errors to prevent
+   * unhandled rejections but does NOT schedule the next attempt itself.
+   */
+  private async _doReconnect(): Promise<void> {
+    this._transition('connecting');
+
+    const ws = new WebSocket(this._url);
+    this._ws = ws;
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onOpen = () => {
+          ws.removeListener('error', onError);
+          resolve();
+        };
+        const onError = (err: Event) => {
+          ws.removeListener('open', onOpen);
+          reject(
+            new RendezvousError(
+              'ws_open_failed',
+              `Failed to open WebSocket to ${this._url} (reconnect attempt ${this._reconnectAttempt})`,
+              (err as ErrorEvent).message,
+            ),
+          );
+        };
+        ws.once('open', onOpen);
+        ws.once('error', onError);
+      });
+
+      this._setupLifecycle(ws);
+      this._transition('registering');
+      await this._register();
+      // _register transitions to 'ready' on success
+    } catch (err) {
+      // If the close handler already cleaned up (ws closed by server), _ws
+      // will not equal `ws`. If _ws still equals `ws`, the failure was
+      // caused by timeout or a WS error that didn't close — force-close
+      // so the close handler runs cleanup + schedules next attempt.
+      if (this._ws === ws) {
+        this._ws.close(1000, 'reconnect attempt failed');
+      }
+      // Don't re-throw — close handler drives the next attempt schedule.
+    }
   }
 
   /**

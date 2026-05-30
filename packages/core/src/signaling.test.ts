@@ -357,23 +357,16 @@ describe('RendezvousClient', () => {
     client.disconnect();
   });
 
-  // ── Additional: reconnect.enabled throws ────────────────────────────────
+  // ── Additional: reconnect.enabled no longer throws (2d implements it) ──
 
-  it('throws if reconnect.enabled is true', async () => {
+  it('constructor accepts reconnect.enabled: true (2d)', async () => {
     const kp = await generateKeyPair();
-    assert.throws(
-      () =>
-        new RendezvousClient({
-          keypair: kp,
-          url: 'ws://localhost:9999',
-          reconnect: { enabled: true },
-        }),
-      (err: unknown) => {
-        assert.ok(err instanceof RendezvousError);
-        assert.strictEqual((err as RendezvousError).code, 'not_implemented');
-        return true;
-      },
-    );
+    const client = new RendezvousClient({
+      keypair: kp,
+      url: 'ws://localhost:9999',
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+    assert.strictEqual(client.state, 'disconnected');
   });
 
   // ── Additional: registered event fires with correct fields ───────────────
@@ -1302,6 +1295,566 @@ describe('Push handlers + fire-and-forget', () => {
     assert.strictEqual(notifyEvents.length, 1);
     assert.strictEqual(notifyEvents[0].sealed_box, longBase64, 'long base64 sealed_box must round-trip intact');
     assert.strictEqual(notifyEvents[0].queued_at, '2025-12-01T00:00:00.000Z');
+
+    client.disconnect();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Reconnect (D3) + Q-N4 (M2 brief #2d)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Reconnect (D3) + Q-N4', () => {
+  before(async () => {
+    await initCrypto();
+  });
+
+  // ── reconnect disabled (default) ────────────────────────────────────────
+
+  it('reconnect disabled: close from ready → disconnected, no reconnect', async (t) => {
+    const kp = await generateKeyPair();
+    let serverCloseCount = 0;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          // Force-close to trigger disconnect
+          setTimeout(() => {
+            serverCloseCount++;
+            ws.close(1001, 'going away');
+          }, 20);
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    let disconnectEvent: { code: number; reason: string } | null = null;
+    const reconnectEvents: Array<{ attempt: number; delayMs: number }> = [];
+    client.on('disconnect', (code, reason) => { disconnectEvent = { code, reason }; });
+    client.on('reconnect', (attempt, delayMs) => { reconnectEvents.push({ attempt, delayMs }); });
+
+    // Wait for close to be processed
+    await new Promise((r) => setTimeout(r, 100));
+
+    assert.ok(disconnectEvent, 'disconnect event must fire');
+    assert.strictEqual(disconnectEvent!.code, 1001);
+    assert.strictEqual(client.state, 'disconnected');
+    assert.strictEqual(reconnectEvents.length, 0, 'no reconnect event when disabled');
+
+    // Verify only one connection was made
+    assert.strictEqual(serverCloseCount, 1);
+
+    client.disconnect();
+  });
+
+  // ── reconnect enabled: close from ready → reconnecting → ready ──────────
+
+  it('reconnect enabled: close from ready → reconnecting → reconnects', async (t) => {
+    const kp = await generateKeyPair();
+    let registerCount = 0;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          // Force-close on FIRST register (not on reconnect)
+          if (registerCount === 1) {
+            setTimeout(() => ws.close(1001, 'going away'), 20);
+          }
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 2000,
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+
+    const stateChanges: Array<{ from: string; to: string }> = [];
+    client.on('state_change', (from, to) => { stateChanges.push({ from, to }); });
+
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+    assert.strictEqual(registerCount, 1);
+
+    // Wait for disconnect + reconnect cycle
+    await new Promise((r) => {
+      client.once('registered', () => r(undefined));
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.strictEqual(client.state, 'ready', 'must be ready after reconnect');
+    assert.strictEqual(registerCount, 2, 'must have registered twice (initial + reconnect)');
+
+    // Verify state transitions include reconnecting
+    const states = stateChanges.map((s) => s.to);
+    assert.ok(states.includes('reconnecting'), 'must transition through reconnecting state');
+
+    client.disconnect();
+  });
+
+  // ── reconnect re-registers (D3 fresh session) ───────────────────────────
+
+  it('reconnect sends fresh register frame (D3 fresh-session)', async (t) => {
+    const kp = await generateKeyPair();
+    const peerId = getPeerId(kp.publicKey);
+    let registerCount = 0;
+    const registerPayloads: Record<string, unknown>[] = [];
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          registerPayloads.push(msg.payload as Record<string, unknown>);
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: registerCount }));
+          // Force-close on first register only
+          if (registerCount === 1) {
+            setTimeout(() => ws.close(1001, 'going away'), 20);
+          }
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 2000,
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+    await client.connect();
+
+    // Wait for reconnect to complete
+    await new Promise((r) => {
+      const onRegistered = () => {
+        if (registerCount >= 2) {
+          client.off('registered', onRegistered);
+          r(undefined);
+        }
+      };
+      client.on('registered', onRegistered);
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.strictEqual(registerCount, 2, 'must have two register frames (initial + reconnect)');
+    assert.strictEqual(registerPayloads.length, 2);
+
+    // Both register payloads must have peer_id and capabilities
+    for (const p of registerPayloads) {
+      assert.strictEqual(p.peer_id, peerId);
+      assert.ok(p.capabilities !== undefined, 'capabilities field must be present');
+    }
+
+    client.disconnect();
+  });
+
+  // ── reconnect event signature ───────────────────────────────────────────
+
+  it('reconnect event fires with (attempt, delayMs)', async (t) => {
+    const kp = await generateKeyPair();
+    let registerCount = 0;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          // Force-close on first register only (reconnect succeeds on 2nd)
+          if (registerCount === 1) {
+            setTimeout(() => ws.close(1001, 'going away'), 20);
+          }
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 2000,
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+
+    const reconnectEvents: Array<{ attempt: number; delayMs: number }> = [];
+    client.on('reconnect', (attempt, delayMs) => {
+      reconnectEvents.push({ attempt, delayMs });
+    });
+
+    await client.connect();
+
+    // Wait for reconnect to complete
+    await new Promise((r) => {
+      const onRegistered = () => {
+        if (registerCount >= 2) {
+          client.off('registered', onRegistered);
+          r(undefined);
+        }
+      };
+      client.on('registered', onRegistered);
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.strictEqual(reconnectEvents.length, 1, 'one reconnect event for successful reconnect');
+    assert.strictEqual(reconnectEvents[0].attempt, 1, 'first attempt');
+    assert.strictEqual(reconnectEvents[0].delayMs, 10, 'baseDelayMs on first attempt');
+
+    client.disconnect();
+  });
+
+  // ── reconnect exponential backoff ───────────────────────────────────────
+
+  it('reconnect exponential backoff: delays follow 2^n pattern (scaled)', async (t) => {
+    const kp = await generateKeyPair();
+    const baseDelay = 10;
+    let registerCount = 0;
+
+    // First connection succeeds (reach ready), then force-close.
+    // Reconnect attempts fail (server closes immediately) to exercise backoff.
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          if (registerCount === 1) {
+            // Initial registration: succeed, then force-close
+            ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+            setTimeout(() => ws.close(1001, 'going away'), 5);
+          } else {
+            // Reconnect attempts: fail immediately
+            setTimeout(() => ws.close(1008, 'not available'), 2);
+          }
+        }
+      });
+    });
+    t.after(() => { server.close(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 500,
+      reconnect: { enabled: true, baseDelayMs: baseDelay, maxAttempts: 3 },
+    });
+
+    const reconnectEvents: Array<{ attempt: number; delayMs: number }> = [];
+    client.on('reconnect', (attempt, delayMs) => {
+      reconnectEvents.push({ attempt, delayMs });
+    });
+
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    // Wait for all reconnect attempts to complete
+    let reconnectFailed = false;
+    client.once('reconnect_failed', () => { reconnectFailed = true; });
+    await new Promise((r) => setTimeout(r, baseDelay * (1 + 2 + 4) + 200));
+
+    assert.strictEqual(reconnectEvents.length, 3, '3 reconnect events for maxAttempts=3');
+    assert.strictEqual(reconnectEvents[0].attempt, 1);
+    assert.strictEqual(reconnectEvents[0].delayMs, baseDelay * 1); // 10ms
+    assert.strictEqual(reconnectEvents[1].attempt, 2);
+    assert.strictEqual(reconnectEvents[1].delayMs, baseDelay * 2); // 20ms
+    assert.strictEqual(reconnectEvents[2].attempt, 3);
+    assert.strictEqual(reconnectEvents[2].delayMs, baseDelay * 4); // 40ms
+
+    assert.ok(reconnectFailed, 'reconnect_failed must fire after max attempts');
+    assert.strictEqual(client.state, 'disconnected');
+
+    client.disconnect();
+  });
+
+  // ── reconnect max attempts → reconnect_failed ───────────────────────────
+
+  it('reconnect max attempts: after failures, reconnect_failed + disconnected', async (t) => {
+    const kp = await generateKeyPair();
+    let registerCount = 0;
+
+    // First connection succeeds (reach ready), then force-close.
+    // Reconnect attempts fail to exercise maxAttempts exhaustion.
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          if (registerCount === 1) {
+            ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+            setTimeout(() => ws.close(1001, 'going away'), 5);
+          } else {
+            setTimeout(() => ws.close(1008, 'not available'), 2);
+          }
+        }
+      });
+    });
+    t.after(() => { server.close(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 200,
+      reconnect: { enabled: true, baseDelayMs: 4, maxAttempts: 2 },
+    });
+
+    let reconnectFailedFired = false;
+    client.on('reconnect_failed', () => { reconnectFailedFired = true; });
+
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    // Wait for all reconnect attempts (baseDelay * (1+2)) + register timeouts + buffer
+    await new Promise((r) => setTimeout(r, 4 * 3 + 400 + 100));
+
+    assert.ok(reconnectFailedFired, 'reconnect_failed must fire');
+    assert.strictEqual(client.state, 'disconnected');
+
+    client.disconnect();
+  });
+
+  // ── explicit disconnect() during reconnecting cancels backoff ───────────
+
+  it('explicit disconnect() during reconnecting cancels backoff', async (t) => {
+    const kp = await generateKeyPair();
+    let registerCount = 0;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          // Force-close on first register
+          if (registerCount === 1) {
+            setTimeout(() => ws.close(1001, 'going away'), 20);
+          }
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 2000,
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+
+    await client.connect();
+
+    // Wait for 'reconnect' event (fires synchronously before setTimeout),
+    // then immediately call disconnect() to cancel the pending backoff timer.
+    await new Promise<void>((resolve) => {
+      client.once('reconnect', () => resolve());
+    });
+
+    // Now explicitly disconnect — timer hasn't fired yet (delay = 10ms)
+    const disconnectEventPromise = new Promise<number>((resolve) => {
+      client.once('disconnect', (code) => resolve(code));
+    });
+    client.disconnect();
+
+    const code = await disconnectEventPromise;
+    assert.strictEqual(code, 1000);
+    assert.strictEqual(client.state, 'disconnected');
+
+    // Wait to confirm NO reconnect happened (registerCount should still be 1)
+    await new Promise((r) => setTimeout(r, 100));
+    assert.strictEqual(registerCount, 1, 'no second register — reconnect was cancelled');
+
+    client.disconnect();
+  });
+
+  // ── explicit disconnect() during ready: no reconnect attempted ──────────
+
+  it('explicit disconnect() during ready: no reconnect', async (t) => {
+    const kp = await generateKeyPair();
+    let registerCount = 0;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 2000,
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    const reconnectEvents: Array<{ attempt: number; delayMs: number }> = [];
+    client.on('reconnect', (attempt, delayMs) => { reconnectEvents.push({ attempt, delayMs }); });
+
+    const disconnectEventPromise = new Promise<number>((resolve) => {
+      client.once('disconnect', (code) => resolve(code));
+    });
+    client.disconnect();
+
+    const code = await disconnectEventPromise;
+    assert.strictEqual(code, 1000);
+    assert.strictEqual(client.state, 'disconnected');
+
+    // Wait to confirm no reconnect
+    await new Promise((r) => setTimeout(r, 100));
+    assert.strictEqual(reconnectEvents.length, 0, 'no reconnect after explicit disconnect');
+    assert.strictEqual(registerCount, 1, 'only one register (no reconnect)');
+
+    client.disconnect();
+  });
+
+  // ── Q-N4: invite_create dropped on close, NOT re-sent on reconnect ─────
+
+  it('Q-N4: invite_create dropped on close, not re-sent after reconnect', async (t) => {
+    const kp = await generateKeyPair();
+    let connIndex = 0;
+    // Track messages per connection
+    const connMessages: string[][] = [];
+
+    const { server, url } = await createMockServer((ws) => {
+      const thisConn = connIndex++;
+      const messages: string[] = [];
+      connMessages[thisConn] = messages;
+
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        messages.push(msg.type as string);
+
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'invite_create') {
+          // Force-close immediately on invite_create — simulate network failure
+          setTimeout(() => ws.close(1001, 'simulated failure'), 10);
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 2000,
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    // Send invite_create — server will force-close
+    const invitePromise = client.inviteCreate({
+      code_hash: 'q-n4-test-hash',
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+    });
+
+    // Ensure the invite_create rejection is captured
+    await assert.rejects(
+      () => invitePromise,
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'connection_closed');
+        return true;
+      },
+    );
+
+    // Wait for reconnect to complete (next 'registered' event after reconnect)
+    await new Promise<void>((r) => {
+      client.once('registered', () => r());
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.strictEqual(client.state, 'ready', 'must be ready after reconnect');
+
+    // Q-N4 critical: verify second connection messages do NOT contain invite_create
+    assert.ok(connMessages[1], 'second connection must exist');
+    const conn2Types = connMessages[1]!;
+
+    // Must contain register (reconnection re-registers per D3)
+    assert.ok(conn2Types.includes('register'), 'reconnect must send register');
+
+    // Must NOT contain invite_create (Q-N4: dropped, not auto-resent)
+    assert.ok(
+      !conn2Types.includes('invite_create'),
+      `Q-N4 violation: invite_create was re-sent after reconnect. conn2 messages: ${conn2Types.join(', ')}`,
+    );
+
+    client.disconnect();
+  });
+
+  // ── reconnect preserves event listeners ─────────────────────────────────
+
+  it('reconnect preserves signal_in event listener', async (t) => {
+    const kp = await generateKeyPair();
+    let registerCount = 0;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          registerCount++;
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          // Force-close on first register
+          if (registerCount === 1) {
+            setTimeout(() => ws.close(1001, 'going away'), 30);
+          } else {
+            // After reconnect, push a signal_in
+            setTimeout(() => {
+              ws.send(JSON.stringify({ type: 'signal_in', from: 'PB-ALICE', payload: 'post-reconnect-signal' }));
+            }, 20);
+          }
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({
+      keypair: kp,
+      url,
+      registerTimeoutMs: 2000,
+      reconnect: { enabled: true, baseDelayMs: 10 },
+    });
+
+    const signalEvents: Array<{ from: string; payload: string }> = [];
+    client.on('signal_in', (from, payload) => {
+      signalEvents.push({ from, payload });
+    });
+
+    await client.connect();
+
+    // Wait for reconnect to complete
+    await new Promise((r) => {
+      const onRegistered = () => {
+        if (registerCount >= 2) {
+          client.off('registered', onRegistered);
+          r(undefined);
+        }
+      };
+      client.on('registered', onRegistered);
+    });
+
+    // Wait for signal_in to arrive
+    await new Promise((r) => setTimeout(r, 50));
+
+    assert.strictEqual(signalEvents.length, 1, 'signal_in event must fire after reconnect');
+    assert.strictEqual(signalEvents[0].from, 'PB-ALICE');
+    assert.strictEqual(signalEvents[0].payload, 'post-reconnect-signal');
 
     client.disconnect();
   });

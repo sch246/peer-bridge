@@ -39,13 +39,42 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 - [x] `room:file_offer` CBOR key collision 修复 + regression-guard vector
 - [x] Resync 和 v2 room management 从 M1 `RoomMessage` union 移除
 
-## M1 未完成（M2 启动前必须关闭）
+## M1 退出状态 ✅
 
-- [ ] **`sealed_box.json` 接入 runner**（存在但未记在 test，DESIGN.md §11.M1 明文要求“通过所有 M0 vectors”）
-- [ ] **`fingerprint_sig.json` 接入 runner**（同上）
-- [ ] **`packages/core/src/known-peers.ts` 单测**（154 LOC 零覆盖，TOML 解析 + 文件 IO + trust 判断）
-- [ ] **`packages/core/src/invite.ts` 单测**（createInvite / redeemInvite / addPeerFromInvite）
-- [ ] **三平台 CI matrix**（DESIGN.md §11.M1）
+- [x] **`sealed_box.json` 接入 runner**（commit `218fa11` — `vectors.test.ts` 中 3 组 sealed-box 向量全部通过）
+- [x] **`fingerprint_sig.json` 接入 runner**（commit `218fa11` — `vectors.test.ts` 中 3 组 fingerprint 向量全部通过）
+- [x] **`packages/core/src/known-peers.ts` 单测**（commit `c215449` — 35 个单测覆盖 parse、serialize、file I/O、findPeer、isTrusted）
+- [x] **`packages/core/src/invite.ts` 单测**（commit `4e55b28` — 29 个单测覆盖 createInvite / buildInviteCreatePayload / buildInviteRedeemPayload / addPeerFromInvite / verifyPeerTrust）
+- [x] **三平台 CI matrix**（commit `3dba86f` — `.github/workflows/ci.yml`，3 OS × 2 Node version = 6 matrix cells）
+
+## M2 启动准入
+
+| 准入项 | 状态 |
+|--------|------|
+| M1 全部关闭 | ✅ |
+| telos 存量 | 11 facts + 14 decisions + 2 tensions |
+| CI matrix 就绪 | ✅（6 cells，`fail-fast: false`） |
+| test vectors runner | ✅（sealed_box + fingerprint_sig + peer_id + invite + cbor） |
+| 已知测试覆盖 | known-peers (35), invite (29), crypto* (15), vectors (6) |
+
+## M2 in-scope（DESIGN.md §11.M2）
+
+- [ ] 单 server 实现，无联邦
+- [ ] `core` 的 rendezvous-client（含 sealed box 离线 notify）
+- [ ] 邀请码端到端流程跑通（CLI 层）
+- [ ] 三平台 CI 跑通 invite/accept
+
+## M2 known unknowns
+
+以下项 M2 实现需要决策，但 telos 尚未沉淀为 fact/decision：
+
+| # | 未知项 | 所属 DESIGN.md § | 缺失原因 |
+|---|--------|-------------------|----------|
+| 1 | rendezvous server 的持久化模型（in-memory only? disk-backed SQLite?） | §2 架构图 + §3.5 rendezvous | DESIGN.md §2 说"离线通知暂存 (≤1KB sealed-box 密文, TTL 24h)"但未规定存储引擎；in-memory 在重启时丢通知，disk-backed 引入 schema migration 复杂度 |
+| 2 | sealed-box 通知队列容量上限与 TTL 清理策略 | §3.8 sealed-box-for-offline-notify | decision `sealed-box-for-offline-notify.md` 仅规定加密原语选择，未定义 per-peer 队列容量、溢出策略（drop-oldest? reject-new?）或 TTL 过期清理的触发时机（lazy-clean? cron tick?） |
+| 3 | WebSocket 信令消息的 JSON schema 与错误码枚举 | §5.1 信令格式 | DESIGN.md §5.1 给了 prose 描述 + 示例，但 M0 test vectors 未生成信令级的 (input, output) 向量；M2 实现需要 validate 字段齐全、错误码枚举不漂移 |
+| 4 | rendezvous 的速率限制与 DoS 防御姿态 | §12.5 "rendezvous 对单 IP 的 invite/lookup 速率限制" | §12.5 只说"必须做"但未给出具体阈值、窗口算法、驳回响应码；是 prose 约束不是可测 spec |
+| 5 | 联邦协议的 hook 预留（M6 才实现但 M2 信令格式不能 foreclose） | §3.5 rendezvous-federation-not-turn | decision `rendezvous-federation-not-turn.md` 记录了 JSON-RPC 联邦的 strategy 选择，但 M2 单-server 的 WebSocket 消息是否携带 `federation_id` / `origin_server` 字段作为 forward-compat 占位，目前未决策 |
 
 ## 其他 BACKLOG（不阻塞 M2）
 
@@ -53,8 +82,8 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 - [ ] **v2 room management 重新引入同上约束**
 - [ ] **同步函数不调 sodium 的 ESLint 规则**（现在是 `crypto-library-mapping.md` 里的 prose discipline，reviewer F11 建议 enforceable化）
 - [ ] **PGP word list 减量**（256 个 dead entries，reviewer F2）
-- [ ] **agent-blind protocol 升级**：让 subagent 输出“我做了哪些 telos 没规定的工程决定”——这些是 telos 覆盖盲区候选（见 `decisions/agent-blind-check-protocol.md` 未来增添）
+- [ ] **agent-blind protocol 升级**：让 subagent 输出"我做了哪些 telos 没规定的工程决定"——这些是 telos 覆盖盲区候选（见 `decisions/agent-blind-check-protocol.md` 未来增添）
 
 ## 下阶段
 
-→ **M2: 信令与走纪服务器**（上面 M1 未完成全部关闭后）
+→ **M3: P2P 传输**（M2 退出条件满足后）

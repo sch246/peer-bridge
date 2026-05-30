@@ -46,6 +46,14 @@ Client maintains pending `invite_create` state across reconnect. After `register
 3. If the server already processed the original `invite_create` before disconnect, the re-send is an idempotent no-op (invite already exists by `code_hash`), but the client still carries unnecessary state.
 4. Keeps signaling client free of cross-reconnect persistence. State management lives in CLI / daemon, not in the WebSocket transport.
 
+## Verification
+
+Verified by test 9 in `packages/core/src/signaling.test.ts` ("Reconnect (D3) + Q-N4: invite_create dropped on close, NOT re-sent after reconnect").
+
+- **Test strategy**: mock server captures all frames received on connection 2 (post-reconnect). Assert that `conn2Types` array does NOT include `'invite_create'`.
+- **Implementation strategy**: implicit via existing code — `_pendingRequest` is rejected and cleared in the WS close handler (`_handleClose`). On reconnect, there is no state to "re-send" — no special drop-list or exclusion logic needed.
+- **Commit**: 42903e9 (brief #2d, reconnect + Q-N4 enforcement).
+
 ## Related
 
 - Decision: [reconnect-requires-reregister](./reconnect-requires-reregister.md)

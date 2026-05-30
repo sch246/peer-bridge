@@ -187,7 +187,7 @@ Scope ledger（详 audit §B，12 项明确不在 M3）作为隐性 scope creep 
 
 ### Post-M3 BACKLOG（sediment plan §C 出）
 
-Verbatim from `.telos/audit-trails/m3-startup-sediment-plan-2026-05-30.md` §C（原文 C-1..C-5）。Recovery commit `<TBD>` 从 commit `beb436b` 的压缩版反转。
+Verbatim from `.telos/audit-trails/m3-startup-sediment-plan-2026-05-30.md` §C（原文 C-1..C-5）。Recovery commit `74f8038` 从 commit `beb436b` 的压缩版反转。
 
 - **MC-1** M4 transcripts 与 M3 CLI 文件格式兼容（U-15）— M3 CLI 无 daemon 无 transcript.jsonl。如果 M3 CLI 把文件存在 `~/Downloads/` 不写 transcript，M4 daemon 启动时如何发现和承认这些文件？需在 M4 实施时设计迁移路径。Revisit M4。
 - **MC-2** known_peers `trust:tofu` 在 P2P 连接时的 CLI 行为（D-12）— `facts/known-peers-toml-schema.md` 定义 trust: "tofu"，但 M3 P2P 连接时对 tofu peer 的行为未定义（是否允许 DataChannel 建立？CLI 警告程度？）。Daemon 阶段 (M4) 的长期 tofu 策略应统一。Cross-link: 与 `manual-fingerprint-confirmation-on-accept.md` 的 "manual confirm" 严格度有 tension。Revisit M4。

@@ -181,13 +181,16 @@ describe('Fingerprint signing (Ed25519 via libsodium)', () => {
     const fingerprint = computeSPKIFingerprint(new Uint8Array(Buffer.from('fake-spki-der')));
     const nonce = new Uint8Array(Buffer.from('0123456789abcdef'));
 
-    const sig = await signFingerprint(
-      fingerprint, kp.publicKey, 1736937600, nonce, kp.secretKey,
-    );
+    const sig = await signFingerprint(fingerprint, kp.publicKey, 1736937600, nonce, kp.secretKey);
     assert.strictEqual(sig.length, 64);
 
     const ok = await verifyFingerprint(
-      fingerprint, kp.publicKey, 1736937600, nonce, sig, kp.publicKey,
+      fingerprint,
+      kp.publicKey,
+      1736937600,
+      nonce,
+      sig,
+      kp.publicKey,
     );
     assert.strictEqual(ok, true);
   });

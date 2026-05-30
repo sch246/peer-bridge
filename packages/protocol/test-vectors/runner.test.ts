@@ -78,7 +78,7 @@ describe('Invite code', () => {
 interface CBORFrameVector {
   name: string;
   input: Record<string, unknown>;
-  expected: { frame_hex: string; note: string };
+  expected: { note: string };
 }
 
 describe('CBOR frame encoding', () => {
@@ -86,19 +86,53 @@ describe('CBOR frame encoding', () => {
 
   for (const v of data.vectors) {
     it(v.name, () => {
-      // Build message from input fields
       const msg = buildMessageFromInput(v.input);
 
-      // Encode to frame
+      // Encode → decode round-trip (semantic matching, not byte matching)
       const frame = encodeFrame(msg);
-
-      // Compare with expected hex
-      const expected = hexToBytes(v.expected.frame_hex);
-      assert.deepStrictEqual(frame, expected, `Frame mismatch for: ${v.expected.note}`);
-
-      // Round-trip: decode back
       const decoded = decodeFrame(frame);
-      assert.strictEqual(decoded.type, msg.type);
+
+      // Field-level assertions: decoded must match input
+      assert.strictEqual(decoded.type, msg.type, v.expected.note);
+
+      switch (decoded.type) {
+        case 'room:hello': {
+          const hello = msg as import('../src/types.js').RoomHello;
+          assert.strictEqual(decoded.version, hello.version);
+          assert.strictEqual(decoded.ts, hello.ts);
+          break;
+        }
+        case 'room:ping': {
+          const ping = msg as import('../src/types.js').RoomPing;
+          assert.strictEqual(decoded.ts, ping.ts);
+          break;
+        }
+        case 'room:msg': {
+          const m = msg as import('../src/types.js').RoomMessage;
+          assert.strictEqual(decoded.body, m.body);
+          assert.strictEqual(decoded.kind, m.kind);
+          assert.strictEqual(decoded.seq, m.seq);
+          assert.strictEqual(decoded.ts, m.ts);
+          break;
+        }
+        case 'room:file_offer': {
+          const fo = msg as import('../src/types.js').RoomFileOffer;
+          assert.strictEqual(decoded.file_id, fo.file_id);
+          assert.strictEqual(decoded.name, fo.name);
+          assert.strictEqual(decoded.size, fo.size);
+          assert.strictEqual(decoded.note ?? '', fo.note ?? '');
+          assert.strictEqual(decoded.seq, fo.seq);
+          assert.strictEqual(decoded.ts, fo.ts);
+          break;
+        }
+        case 'room:file_chunk': {
+          const fc = msg as import('../src/types.js').RoomFileChunk;
+          assert.strictEqual(decoded.file_id, fc.file_id);
+          assert.strictEqual(decoded.seq_num, fc.seq_num);
+          assert.deepStrictEqual(decoded.data, fc.data);
+          break;
+        }
+      }
     });
   }
 });

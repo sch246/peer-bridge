@@ -3,16 +3,8 @@
 // Uses libsodium-wrappers for all cryptographic operations.
 
 import sodium from 'libsodium-wrappers';
+import { initCrypto } from './crypto-init.js';
 import { encodePeerId } from '@peer-bridge/protocol';
-
-let ready = false;
-
-async function ensureReady(): Promise<void> {
-  if (!ready) {
-    await sodium.ready;
-    ready = true;
-  }
-}
 
 export interface SignKeyPair {
   publicKey: Uint8Array;
@@ -21,10 +13,9 @@ export interface SignKeyPair {
 
 /**
  * Generate a new Ed25519 keypair.
- * Must be called after sodium.ready (first call auto-initializes).
  */
 export async function generateKeyPair(): Promise<SignKeyPair> {
-  await ensureReady();
+  await initCrypto();
   const kp = sodium.crypto_sign_keypair();
   return { publicKey: kp.publicKey, secretKey: kp.privateKey };
 }
@@ -121,7 +112,7 @@ export function getPeerId(publicKey: Uint8Array): string {
  * Sign a message with the Ed25519 secret key.
  */
 export async function sign(message: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array> {
-  await ensureReady();
+  await initCrypto();
   return sodium.crypto_sign_detached(message, secretKey);
 }
 
@@ -133,6 +124,6 @@ export async function verify(
   signature: Uint8Array,
   publicKey: Uint8Array,
 ): Promise<boolean> {
-  await ensureReady();
+  await initCrypto();
   return sodium.crypto_sign_verify_detached(signature, message, publicKey);
 }

@@ -3,16 +3,8 @@
 // Uses libsodium-wrappers for Ed25519 signing (not tweetnacl).
 
 import sodium from 'libsodium-wrappers';
+import { initCrypto } from './crypto-init.js';
 import { createHash } from 'node:crypto';
-
-let ready = false;
-
-async function ensureReady(): Promise<void> {
-  if (!ready) {
-    await sodium.ready;
-    ready = true;
-  }
-}
 
 /**
  * Build the signed payload for DTLS fingerprint verification.
@@ -61,7 +53,7 @@ export async function signFingerprint(
   nonce: Uint8Array,
   secretKey: Uint8Array,
 ): Promise<Uint8Array> {
-  await ensureReady();
+  await initCrypto();
   const payload = buildFingerprintPayload(fingerprintBytes, peerIdBytes, timestamp, nonce);
   return sodium.crypto_sign_detached(payload, secretKey);
 }
@@ -79,7 +71,7 @@ export async function verifyFingerprint(
   signature: Uint8Array,
   publicKey: Uint8Array,
 ): Promise<boolean> {
-  await ensureReady();
+  await initCrypto();
   const payload = buildFingerprintPayload(fingerprintBytes, peerIdBytes, timestamp, nonce);
   return sodium.crypto_sign_verify_detached(signature, payload, publicKey);
 }

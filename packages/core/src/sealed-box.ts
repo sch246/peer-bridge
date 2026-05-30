@@ -3,16 +3,8 @@
 // Spec: protocol.md §9, fact nacl-sealed-box-properties.md
 
 import sodium from 'libsodium-wrappers';
+import { initCrypto } from './crypto-init.js';
 import type { SignKeyPair } from './identity.js';
-
-let ready = false;
-
-async function ensureReady(): Promise<void> {
-  if (!ready) {
-    await sodium.ready;
-    ready = true;
-  }
-}
 
 export interface BoxKeyPair {
   publicKey: Uint8Array;
@@ -25,7 +17,7 @@ export interface BoxKeyPair {
  * Spec: fact ed25519-x25519-conversion.md
  */
 export async function ed25519ToX25519(keyPair: SignKeyPair): Promise<BoxKeyPair> {
-  await ensureReady();
+  await initCrypto();
   return {
     publicKey: sodium.crypto_sign_ed25519_pk_to_curve25519(keyPair.publicKey),
     secretKey: sodium.crypto_sign_ed25519_sk_to_curve25519(keyPair.secretKey),
@@ -44,7 +36,7 @@ export async function seal(
   payload: Uint8Array,
   recipientX25519PublicKey: Uint8Array,
 ): Promise<Uint8Array> {
-  await ensureReady();
+  await initCrypto();
   return sodium.crypto_box_seal(payload, recipientX25519PublicKey);
 }
 
@@ -61,7 +53,7 @@ export async function sealOpen(
   recipientX25519PublicKey: Uint8Array,
   recipientX25519SecretKey: Uint8Array,
 ): Promise<Uint8Array | null> {
-  await ensureReady();
+  await initCrypto();
   try {
     return sodium.crypto_box_seal_open(sealed, recipientX25519PublicKey, recipientX25519SecretKey);
   } catch {

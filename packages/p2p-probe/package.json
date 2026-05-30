@@ -1,0 +1,20 @@
+{
+  "name": "@peer-bridge/p2p-probe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "P2P sanity probe — validates node-datachannel installs and connects on all platforms",
+  "type": "module",
+  "scripts": {
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok"
+  },
+  "dependencies": {
+    "node-datachannel": "0.32.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  }
+}

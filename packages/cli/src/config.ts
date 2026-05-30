@@ -37,7 +37,7 @@ export interface WebRTCConfig {
 }
 
 export interface DaemonConfig {
-  listen?: string;   // Unix socket path (M4); empty for now per m2-cli-bypasses-daemon
+  listen?: string; // Unix socket path (M4); empty for now per m2-cli-bypasses-daemon
   data_dir: string;
 }
 
@@ -118,7 +118,7 @@ export function defaultConfig(dataDir?: string): Config {
       data_dir: dd,
     },
     notify: {
-      on_event: '',   // optional
+      on_event: '', // optional
     },
     limits: {
       max_file_size_mb: 500,
@@ -219,41 +219,41 @@ export function parseConfig(toml: string, dataDir?: string): Config {
     identity: {
       key_file:
         typeof (parsed.identity as Record<string, unknown> | undefined)?.key_file === 'string'
-          ? (parsed.identity as Record<string, unknown>).key_file as string
+          ? ((parsed.identity as Record<string, unknown>).key_file as string)
           : defaults.identity.key_file,
     },
     rendezvous: {
       url:
         typeof (parsed.rendezvous as Record<string, unknown> | undefined)?.url === 'string'
-          ? (parsed.rendezvous as Record<string, unknown>).url as string
+          ? ((parsed.rendezvous as Record<string, unknown>).url as string)
           : defaults.rendezvous.url,
     },
     webrtc: parseWebRTC(parsed.webrtc, defaults.webrtc),
     daemon: {
       listen:
         typeof (parsed.daemon as Record<string, unknown> | undefined)?.listen === 'string'
-          ? (parsed.daemon as Record<string, unknown>).listen as string
+          ? ((parsed.daemon as Record<string, unknown>).listen as string)
           : defaults.daemon.listen,
       data_dir:
         typeof (parsed.daemon as Record<string, unknown> | undefined)?.data_dir === 'string'
-          ? (parsed.daemon as Record<string, unknown>).data_dir as string
+          ? ((parsed.daemon as Record<string, unknown>).data_dir as string)
           : defaults.daemon.data_dir,
     },
     notify: {
       on_event:
         typeof (parsed.notify as Record<string, unknown> | undefined)?.on_event === 'string'
-          ? (parsed.notify as Record<string, unknown>).on_event as string
+          ? ((parsed.notify as Record<string, unknown>).on_event as string)
           : defaults.notify.on_event,
     },
     limits: {
       max_file_size_mb:
         typeof (parsed.limits as Record<string, unknown> | undefined)?.max_file_size_mb === 'number'
-          ? (parsed.limits as Record<string, unknown>).max_file_size_mb as number
+          ? ((parsed.limits as Record<string, unknown>).max_file_size_mb as number)
           : defaults.limits.max_file_size_mb,
       max_messages_per_wait:
         typeof (parsed.limits as Record<string, unknown> | undefined)?.max_messages_per_wait ===
         'number'
-          ? (parsed.limits as Record<string, unknown>).max_messages_per_wait as number
+          ? ((parsed.limits as Record<string, unknown>).max_messages_per_wait as number)
           : defaults.limits.max_messages_per_wait,
     },
   };

@@ -257,7 +257,10 @@ describe('serializeConfig output format', () => {
   it('has blank lines between sections', () => {
     const toml = serializeConfig(defaultConfig());
     const blankLines = [...toml.matchAll(/\n\n/g)];
-    assert.ok(blankLines.length >= 4, `Expected >=4 blank-line separators, got ${blankLines.length}`);
+    assert.ok(
+      blankLines.length >= 4,
+      `Expected >=4 blank-line separators, got ${blankLines.length}`,
+    );
   });
 
   it('has TURN comment placeholder', () => {

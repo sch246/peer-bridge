@@ -12,15 +12,8 @@
 
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
-import {
-  resolveDataDir,
-  defaultConfig,
-  writeConfig,
-} from '../config.js';
-import {
-  loadIdentity,
-  saveIdentity,
-} from '../identity-storage.js';
+import { resolveDataDir, defaultConfig, writeConfig } from '../config.js';
+import { loadIdentity, saveIdentity } from '../identity-storage.js';
 import { generateKeyPair, getPeerId } from '@peer-bridge/core';
 
 export interface InitArgs {

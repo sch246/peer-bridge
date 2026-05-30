@@ -100,18 +100,22 @@ describe('identity storage', () => {
     }
   });
 
-  it('Unix: identity.key has mode 0o600 after save', { skip: process.platform === 'win32' }, async () => {
-    const dir = tmpdir();
-    try {
-      await mkdir(dir, { recursive: true });
-      const kp = await generateKeyPair();
-      await saveIdentity(dir, kp);
-      const keyPath = path.join(dir, 'identity.key');
-      const st = await stat(keyPath);
-      const mode = st.mode & 0o777;
-      assert.strictEqual(mode, 0o600, `Expected 0o600, got 0o${mode.toString(8)}`);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  it(
+    'Unix: identity.key has mode 0o600 after save',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const dir = tmpdir();
+      try {
+        await mkdir(dir, { recursive: true });
+        const kp = await generateKeyPair();
+        await saveIdentity(dir, kp);
+        const keyPath = path.join(dir, 'identity.key');
+        const st = await stat(keyPath);
+        const mode = st.mode & 0o777;
+        assert.strictEqual(mode, 0o600, `Expected 0o600, got 0o${mode.toString(8)}`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

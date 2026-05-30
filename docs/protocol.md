@@ -255,6 +255,7 @@ Response: { "ack": true }
 ### 步骤
 
 1. **生成 ephemeral DTLS 证书**
+
    - Alice 生成 ECDSA P-256 短期证书
    - 计算 SHA-256 fingerprint: `sha256(spki_der)`
    - SPKI = SubjectPublicKeyInfo DER 编码
@@ -286,6 +287,7 @@ Response: { "ack": true }
    ```
 
 4. **Bob 验证**
+
    - 解码 peer_id → 公钥
    - 重组 `signed_payload` = fingerprint_bytes || peer_id_bytes || timestamp_be || nonce
    - 验证 `Ed25519_verify(pubkey, signed_payload, signature)`
@@ -293,6 +295,7 @@ Response: { "ack": true }
    - 验证 `peer_id` 在 `known_peers.toml` 中
 
 5. **DTLS 握手**
+
    - WebRTC 自动验证 certificate fingerprint 匹配 SDP
    - 如果匹配，进入 DataChannel 阶段
 

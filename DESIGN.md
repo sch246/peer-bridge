@@ -11,6 +11,7 @@
 **协议许可**：AGPL-3.0。防止 SaaS 套壳，鼓励改进回流。
 
 **范围内**：
+
 - P2P 加密通信，支持任意类型文件传输
 - 邀请式好友发现（无需中央账号系统）
 - 可自托管的 rendezvous server，server 间可联邦
@@ -19,6 +20,7 @@
 - 多人聊天室（数据模型原生支持，工具集第一版只暴露 1:1）
 
 **范围外**（第一版明确不做）：
+
 - 浏览器客户端（命令行优先）
 - 官方 TURN 服务（用户自带）
 - 端到端通信的更强匿名性（PAKE、洋葱路由等）
@@ -64,12 +66,12 @@
 
 **四大可执行进程：**
 
-| 组件 | 形态 | 是否依赖 pi |
-|---|---|---|
-| `peer-bridge-rendezvous` | 公网常驻 | 否 |
-| `peer-bridge-daemon` | 本地常驻 | 否（核心传输 + room 管理） |
-| `peer-bridge` (CLI) | 按需调用 | 否 |
-| `pi-peer-bridge` (extension) | pi 插件 | 是 |
+| 组件                         | 形态     | 是否依赖 pi                |
+| ---------------------------- | -------- | -------------------------- |
+| `peer-bridge-rendezvous`     | 公网常驻 | 否                         |
+| `peer-bridge-daemon`         | 本地常驻 | 否（核心传输 + room 管理） |
+| `peer-bridge` (CLI)          | 按需调用 | 否                         |
+| `pi-peer-bridge` (extension) | pi 插件  | 是                         |
 
 **关键架构决策**：daemon **不** spawn pi 子进程。daemon 的角色是 P2P 网络接入层 + 聊天室状态管理 + inbox。pi 通过 extension 中的工具调用 daemon IPC 来收发消息。这个设计消除了 session 文件争用、pi 进程生命周期管理、角色混淆等一系列问题。详见 §3.10。
 
@@ -82,28 +84,33 @@
 **决策**：用 `node-datachannel`（基于 libdatachannel）实现 P2P 通道。
 
 **理由**：
+
 - NAT 穿透是真实痛点（朋友家 CGNAT 普遍），WebRTC 的 ICE 框架成熟可靠
 - DTLS 自带加密，SCTP 自带分片/可靠传输/流控，省下大量自研代码
 - Fingerprint pinning 模型天然支持 pubkey 验证
 - 缺点（C++ 模块依赖）对 daemon 形态可接受，且 `node-datachannel` 提供三大平台预编译包
 
 **放弃的方案**：
-- *裸 TCP + Noise + 自己打洞*：自研 NAT 穿透是深坑，且没有理由重新发明 ICE
-- *libp2p*：协议栈完整但学习曲线陡，对单一应用是 overkill
+
+- _裸 TCP + Noise + 自己打洞_：自研 NAT 穿透是深坑，且没有理由重新发明 ICE
+- _libp2p_：协议栈完整但学习曲线陡，对单一应用是 overkill
 
 ### 3.2 身份模型：独立 Ed25519，不复用 SSH 密钥
 
 **决策**：每个节点生成独立的 Ed25519 长期密钥，存放在 `<data_dir>/identity.key`。
 
 **理由**：
+
 - SSH 密钥可能有 passphrase，会让 daemon 启动卡死
 - 用途隔离：peer-bridge 的密钥泄漏不应影响 SSH 安全
 - 复用 Ed25519 **算法**和 **known_hosts 思想**已足够，无需复用文件本身
 
 **Peer ID 格式**（仿 Syncthing）：
+
 ```
 PB-7X4J2-M9KQR-ABCDE-FGHIJ-KLMNO-PQRST
 ```
+
 即 base32(pubkey) + Luhn mod 32 校验码，每 5 字符插连字符。自验证，无需 CA。
 
 **第一版限制**：peer_id 与设备一一对应。同一用户的笔记本和台式机是两个独立 peer_id，需要分别加好友。这是 §3.11 记录的 open tension。
@@ -113,6 +120,7 @@ PB-7X4J2-M9KQR-ABCDE-FGHIJ-KLMNO-PQRST
 **决策**：WebRTC 的 DTLS 证书每次连接重新生成（短期），但 fingerprint 必须用 Ed25519 长期密钥签名后一并发送。
 
 **握手流程**：
+
 1. Alice 生成 ephemeral DTLS 证书，计算 SHA-256 fingerprint
 2. Alice 用长期 Ed25519 私钥签名 `(fingerprint, peer_id, timestamp, nonce)`
 3. 通过信令通道把 `(SDP含fingerprint, signature, alice_peer_id)` 发给 Bob
@@ -128,6 +136,7 @@ PB-7X4J2-M9KQR-ABCDE-FGHIJ-KLMNO-PQRST
 ### 3.4 不提供官方 TURN，用户 BYO
 
 **决策**：daemon 配置里支持填 TURN credentials（任意 RFC 5766 兼容服务）。文档推荐两条路径：
+
 - 自托管 coturn（家用 VPS 即可）
 - 使用 Cloudflare TURN（每月 1TB 免费额度）
 
@@ -140,6 +149,7 @@ PB-7X4J2-M9KQR-ABCDE-FGHIJ-KLMNO-PQRST
 **联邦协议**（管理员手动配置受信任的 server 列表）：
 
 每个 server 维护：
+
 ```
 local_peers:   peer_id → ws_conn, last_seen
 federations:   [{ url, pubkey }]   # 互相加好友式配置
@@ -148,6 +158,7 @@ seen_queries:  request_id → expires_at (10s TTL)  # 防风暴
 ```
 
 查询流程：
+
 1. Alice@A 想找 Bob → 先查 local_peers，再查 cache
 2. 都没有 → A 向所有 federations 广播 `{query, request_id, peer_id, ttl: 2}`
 3. 收到查询的 server 用 `request_id` 去重（10s 窗口），不去重则丢弃
@@ -176,6 +187,7 @@ Add to known peers as [alice]? [Y/n]
 ```
 
 **底层实现**：
+
 - 4 词来自 PGP word list（256 词典 → 32 bit 熵）+ 1 个 5 字母 nonce → 共 ~57 bit
 - 邀请方注册 `(code_hash, pubkey, peer_id)` 到 rendezvous（≤10 分钟过期）
 - 接受方查询 `SHA-256(code)` → 拿到对方信息
@@ -194,12 +206,14 @@ Add to known peers as [alice]? [Y/n]
 **决策**：rendezvous 允许暂存 ≤1KB 通知，TTL 24h。**payload 必须用 NaCl sealed box 加密**。
 
 **加密方案**：
+
 - 接收方的 Ed25519 公钥通过 `crypto_sign_ed25519_pk_to_curve25519` 转换为 X25519 公钥
 - 发送方用 `crypto_box_seal(payload, recipient_x25519_pk)` 加密
 - 发送方不需要暴露自己的身份给加密层（sealed box 一次性 ephemeral key）
 - 接收方用自己的 Ed25519 私钥转换出的 X25519 私钥解密
 
 **为什么这个方案**：
+
 - libsodium / `tweetnacl` 在三平台都有原生支持
 - sealed box 不要求 sender 提供 X25519 keypair，简化了发送方逻辑
 - Ed25519 → X25519 转换是标准操作（RFC 7748 + libsodium 文档）
@@ -217,6 +231,7 @@ Add to known peers as [alice]? [Y/n]
 ### 3.10 聊天室抽象（核心架构决定）
 
 **问题**：pi 的 session 模型是 user ↔ AI 一对一。把外部 peer 的 AI 消息作为 user message 注入到 Bob 的 session 会导致：
+
 - Bob 回看 session 时看到"自己说过的话"，实际是 Alice 的 AI
 - session 文件语义污染：无法区分"Bob 本人输入"和"Alice 的 AI 的发言"
 - daemon spawn 的 RPC 子进程和 Bob 的 TUI 进程争夺 session JSONL 的写权（pi 的 SessionManager 不支持并发写入）
@@ -225,28 +240,28 @@ Add to known peers as [alice]? [Y/n]
 
 **pi 能力依据**（来自 pi v0.76.0 文档）：
 
-| pi 能力 | 文档位置 | 用法 |
-|---|---|---|
-| `pi.registerTool()` 自定义工具 | `extensions.md` | `peer_chat_wait`、`peer_chat_send` 等工具注册 |
-| 工具的 `onUpdate` 流式回调 | `extensions.md` §Custom Tools | `peer_chat_wait` 收到消息时逐条推 partial result |
-| `pi.sendUserMessage()` 注入 user 消息 | `extensions.md` | `/peer-pull` 命令让 AI 主动调 wait |
-| `pi.registerCommand()` 注册斜杠命令 | `extensions.md` | `/peer-pull` 命令 |
-| `ctx.ui.setStatus()` footer 状态 | `extensions.md` §ctx.ui | 显示 "alice: 3 unread" |
-| `ctx.signal` abort 信号 | `extensions.md` §ctx.signal | 用户 Ctrl+C 中断 wait |
-| `pi.sendMessage()` custom message | `extensions.md` | 发件镜像 entry（标注 peer-bridge-outgoing）|
-| SessionManager append-only | `sessions.md`, `session-format.md` | **利用它不争抢写入权** |
-| auto-compaction | `compaction.md` | 长对话自动压缩，无需干预 |
+| pi 能力                               | 文档位置                           | 用法                                             |
+| ------------------------------------- | ---------------------------------- | ------------------------------------------------ |
+| `pi.registerTool()` 自定义工具        | `extensions.md`                    | `peer_chat_wait`、`peer_chat_send` 等工具注册    |
+| 工具的 `onUpdate` 流式回调            | `extensions.md` §Custom Tools      | `peer_chat_wait` 收到消息时逐条推 partial result |
+| `pi.sendUserMessage()` 注入 user 消息 | `extensions.md`                    | `/peer-pull` 命令让 AI 主动调 wait               |
+| `pi.registerCommand()` 注册斜杠命令   | `extensions.md`                    | `/peer-pull` 命令                                |
+| `ctx.ui.setStatus()` footer 状态      | `extensions.md` §ctx.ui            | 显示 "alice: 3 unread"                           |
+| `ctx.signal` abort 信号               | `extensions.md` §ctx.signal        | 用户 Ctrl+C 中断 wait                            |
+| `pi.sendMessage()` custom message     | `extensions.md`                    | 发件镜像 entry（标注 peer-bridge-outgoing）      |
+| SessionManager append-only            | `sessions.md`, `session-format.md` | **利用它不争抢写入权**                           |
+| auto-compaction                       | `compaction.md`                    | 长对话自动压缩，无需干预                         |
 
 **为什么这解决了所有硬问题**：
 
-| 之前的问题 | 聊天室模型下的解决 |
-|---|---|
-| Bob 的 session 里 user 角色被 Alice 的 AI 污染 | session 只有 Bob ↔ Bob 的 AI。外部 AI 永远在 `tool_result` 中 |
-| Single-writer：daemon 和 TUI 抢写 session JSONL | pi 进程是唯一 writer。daemon 不碰 session 文件 |
-| AI 互打无限回合 | Bob 不调 `peer_chat_wait` 就不消费消息。回信是显式决策 |
-| Q2 "用户在 session 时被外部消息打断" | 永远不打断。消息在 daemon inbox 里排队，等 AI 主动 fetch |
-| 复杂的 (peer_id, session_id) → pi 子进程映射表 | 只有 `room_id`，状态在 daemon 的 SQLite 里 |
-| pi 子进程生命周期 | daemon 不 spawn pi 子进程，整个问题消失 |
+| 之前的问题                                      | 聊天室模型下的解决                                             |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| Bob 的 session 里 user 角色被 Alice 的 AI 污染  | session 只有 Bob ↔ Bob 的 AI。外部 AI 永远在 `tool_result` 中 |
+| Single-writer：daemon 和 TUI 抢写 session JSONL | pi 进程是唯一 writer。daemon 不碰 session 文件                 |
+| AI 互打无限回合                                 | Bob 不调 `peer_chat_wait` 就不消费消息。回信是显式决策         |
+| Q2 "用户在 session 时被外部消息打断"            | 永远不打断。消息在 daemon inbox 里排队，等 AI 主动 fetch       |
+| 复杂的 (peer_id, session_id) → pi 子进程映射表  | 只有 `room_id`，状态在 daemon 的 SQLite 里                     |
+| pi 子进程生命周期                               | daemon 不 spawn pi 子进程，整个问题消失                        |
 
 **多人聊天室**：数据模型按多成员 room 做（见 §9），第一版工具只暴露 1:1 语义（`peer_chat_send(to, ...)`），但底层已经是 room-based，后续加多人 API 无需迁移。
 
@@ -255,11 +270,13 @@ Add to known peers as [alice]? [Y/n]
 以下条目在 `.telos/tensions/` 中以 `status: open` 入库，第一版不解决：
 
 **T1: 单设备身份 vs 跨设备同身份**
+
 - 用户在多台设备上想以"alice"出现，但当前每设备独立 peer_id
 - 候选方向：客户端侧 device group（一个 alias 映射到多个 peer_id）、或 sub-key 派生
 - 第一版接受："alice-laptop / alice-desktop 是两个好友"
 
 **T2: wait 间隙的消息可见性**
+
 - AI 调 `peer_chat_send` 之前可能有刚到达的消息，AI 不知道
 - 缓解：daemon 的 send 响应中附带 `pending_unread_count` 和最新一条预览
 - AI system prompt 提示："send 后看响应里的 pending_unread，可能需要先 wait"
@@ -270,6 +287,7 @@ Add to known peers as [alice]? [Y/n]
 **决策**：`seq` 是 **per-sender** 单调递增整数，从 0 开始。房间消息的全局顺序由 `(timestamp, sender_peer_id, seq)` 三元组决定。
 
 **理由**：
+
 - 1:1 房间没有共识机制，无法分配全局 seq
 - per-sender seq 让接收方能检测**自己接收某 sender 时的丢消息**（seq 跳号 → 触发 resync）
 - timestamp 用于 UI 展示和粗排序，sender + seq 用于精确定位
@@ -282,6 +300,7 @@ Add to known peers as [alice]? [Y/n]
 ## 4. 身份与文件
 
 平台相关的 data_dir：
+
 - Linux/macOS: `~/.peer-bridge/`
 - Windows: `%APPDATA%\peer-bridge\`
 
@@ -302,6 +321,7 @@ Add to known peers as [alice]? [Y/n]
 ```
 
 `known_peers.toml`：
+
 ```toml
 [[peer]]
 alias = "alice"
@@ -321,19 +341,19 @@ home_rendezvous = "wss://rdv.example.com"
 
 所有 client → server 消息都附 `{sig, ts}`，sig = Ed25519(payload + ts)。
 
-| 方向 | 类型 | 字段 |
-|---|---|---|
-| C→S | `register` | `{peer_id, capabilities}` |
-| S→C | `register_ok` | `{server_id, federation_size}` |
-| C→S | `lookup` | `{peer_id}` |
-| S→C | `lookup_result` | `{found: bool, home?: url}` |
-| C→S | `invite_create` | `{code_hash, pubkey, peer_id, expires_at}` |
-| C→S | `invite_redeem` | `{code_hash}` |
-| S→C | `invite_result` | `{peer_id, pubkey}` |
-| C→S | `signal` | `{to: peer_id, payload: encrypted}` |
-| S→C | `signal_in` | `{from: peer_id, payload}` |
-| C→S | `notify` | `{to: peer_id, sealed_box: ≤1KB}` (离线暂存) |
-| S→C | `notify_in` | `{sealed_box, queued_at}` |
+| 方向 | 类型            | 字段                                         |
+| ---- | --------------- | -------------------------------------------- |
+| C→S  | `register`      | `{peer_id, capabilities}`                    |
+| S→C  | `register_ok`   | `{server_id, federation_size}`               |
+| C→S  | `lookup`        | `{peer_id}`                                  |
+| S→C  | `lookup_result` | `{found: bool, home?: url}`                  |
+| C→S  | `invite_create` | `{code_hash, pubkey, peer_id, expires_at}`   |
+| C→S  | `invite_redeem` | `{code_hash}`                                |
+| S→C  | `invite_result` | `{peer_id, pubkey}`                          |
+| C→S  | `signal`        | `{to: peer_id, payload: encrypted}`          |
+| S→C  | `signal_in`     | `{from: peer_id, payload}`                   |
+| C→S  | `notify`        | `{to: peer_id, sealed_box: ≤1KB}` (离线暂存) |
+| S→C  | `notify_in`     | `{sealed_box, queued_at}`                    |
 
 `notify` 的 `sealed_box` 是 §3.8 描述的 NaCl sealed box 密文。server 不能解密，因此不能验证 from 字段——from 信息在密文里。
 
@@ -428,11 +448,13 @@ code_hash = SHA-256(code)
 存储：内存 + 可选 SQLite（仅持久化 federation 配置和管理员设置，运行时数据全内存，重启丢失可接受）。
 
 启动：
+
 ```
 peer-bridge-rendezvous --config /etc/peer-bridge/server.toml
 ```
 
 `server.toml`：
+
 ```toml
 [server]
 listen = "0.0.0.0:443"
@@ -457,11 +479,13 @@ pubkey = "ed25519:..."
 **角色**：P2P 网络接入层 + 聊天室状态管理 + inbox。**不 spawn pi 子进程**。
 
 进程模型：单进程 Node。
+
 - Linux: systemd user service
 - macOS: launchd LaunchAgent
 - Windows: 默认前台运行；提供 `peer-bridge-daemon install-service` 安装为 Windows Service（基于 `node-windows` 或类似工具）
 
 启动：
+
 ```
 peer-bridge-daemon                  # 默认 <data_dir>/config.toml
 peer-bridge-daemon --foreground     # 不 daemonize, 输出到 stderr
@@ -476,6 +500,7 @@ peer-bridge-daemon --foreground     # 不 daemonize, 输出到 stderr
 5. **通知 hook**：消息到达时触发用户配置的外部脚本
 
 **daemon 不做什么**：
+
 - ❌ 不 spawn pi 子进程
 - ❌ 不维护 (peer_id, session_id) → pi_session_file 映射
 - ❌ 不注入 user message 到 pi session
@@ -517,6 +542,7 @@ WS     /events                        实时推送（新消息、文件到达、
 **send 响应附带未读信息**（缓解 §3.11 T2）：每次 send 完成后，daemon 检查发起方所有房间的未读消息。如果有，响应里返回 `pending_unread_count` 和一条最新预览，让 AI 决定是否需要立即去 wait。
 
 **长轮询 `/rooms/:id/wait` 的行为**：
+
 - 如果 room 有未读消息 → 立即返回所有未读
 - 如果没有 → 挂起连接，最长 `timeout_s` 秒（默认 300）
 - 新消息到达时逐条以 SSE 风格推送给调用方
@@ -524,6 +550,7 @@ WS     /events                        实时推送（新消息、文件到达、
 - 调用方断开连接即取消等待
 
 **SQLite schema**：
+
 ```sql
 CREATE TABLE rooms (
   room_id TEXT PRIMARY KEY,
@@ -563,19 +590,20 @@ CREATE INDEX idx_messages_room_unread ON room_messages(room_id, read_at);
 
 **核心工具集**：
 
-| 工具 | 描述 | 对应 IPC 调用 |
-|---|---|---|
-| `peer_chat_send` | 发送文本到 peer / room | `POST /rooms/:id/send` |
-| `peer_chat_send_file` | 发送文件 + 附言 | `POST /rooms/:id/send_file` |
-| `peer_chat_wait` | 等待指定房间新消息（长轮询） | `POST /rooms/:id/wait` |
-| `peer_chat_wait_any` | 等待任意房间新消息 | `POST /rooms/wait_any` |
-| `peer_chat_status` | 查看各房间未读数 / peer 在线状态 | `GET /rooms`, `GET /rooms/:id/unread_count` |
-| `peer_chat_history` | 调阅房间历史消息 | `GET /rooms/:id/messages` |
-| `peer_list` | 列出 known peers 及在线状态 | `GET /status` |
+| 工具                  | 描述                             | 对应 IPC 调用                               |
+| --------------------- | -------------------------------- | ------------------------------------------- |
+| `peer_chat_send`      | 发送文本到 peer / room           | `POST /rooms/:id/send`                      |
+| `peer_chat_send_file` | 发送文件 + 附言                  | `POST /rooms/:id/send_file`                 |
+| `peer_chat_wait`      | 等待指定房间新消息（长轮询）     | `POST /rooms/:id/wait`                      |
+| `peer_chat_wait_any`  | 等待任意房间新消息               | `POST /rooms/wait_any`                      |
+| `peer_chat_status`    | 查看各房间未读数 / peer 在线状态 | `GET /rooms`, `GET /rooms/:id/unread_count` |
+| `peer_chat_history`   | 调阅房间历史消息                 | `GET /rooms/:id/messages`                   |
+| `peer_list`           | 列出 known peers 及在线状态      | `GET /status`                               |
 
 **`peer_chat_send` 响应里附 `pending_unread`**，AI 在 system prompt 中被告知"send 后查看是否有未读，可能需要先 wait"。
 
 **`peer_chat_wait` 流式行为**：
+
 - 进入时先 drain inbox 中的所有未读
 - 没有则挂起到 `timeout_s`
 - 每条新消息通过 `onUpdate` 推 partial result
@@ -608,17 +636,17 @@ CREATE INDEX idx_messages_room_unread ON room_messages(room_id, read_at);
 **`/peer-pull` 命令**（用户手动介入）：
 
 ```typescript
-pi.registerCommand("peer-pull", {
-  description: "拉取聊天室未读消息",
+pi.registerCommand('peer-pull', {
+  description: '拉取聊天室未读消息',
   handler: async (args, ctx) => {
     const rooms = await dc.listRooms();
-    const unread = rooms.filter(r => r.unread > 0);
+    const unread = rooms.filter((r) => r.unread > 0);
     if (unread.length === 0) {
-      ctx.ui.notify("No unread messages", "info");
+      ctx.ui.notify('No unread messages', 'info');
       return;
     }
-    const names = unread.map(r => r.name).join(", ");
-    ctx.ui.notify(`Pulling from: ${names}`, "info");
+    const names = unread.map((r) => r.name).join(', ');
+    ctx.ui.notify(`Pulling from: ${names}`, 'info');
     pi.sendUserMessage(`请去聊天室看看消息。用 peer_chat_wait 拉取。`);
   },
 });
@@ -656,12 +684,12 @@ CLI 通过 daemon socket/pipe 完成所有操作。如果 daemon 没启动，`se
 
 ### 7.1 通知分级
 
-| 状态 | 通知路径 |
-|---|---|
+| 状态                        | 通知路径                                                                                     |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
 | **A. Bob 在 pi session 里** | 扩展用 `ctx.ui.setStatus()` 显示 footer 提示。用户用 `/peer-pull` 让 AI 去拉取。**不打断**。 |
-| **B. pi 没开但 daemon 在** | daemon 触发 `[notify] on_event` hook + `/events` WS 推事件。消息存入 inbox。 |
-| **C. daemon 也没开** | rendezvous 离线暂存 sealed box（§3.8），TTL 24h。daemon 启动后拉取，做 B。 |
-| **D. 机器整个关机** | 同 C。TTL 过期后发起方需重发。 |
+| **B. pi 没开但 daemon 在**  | daemon 触发 `[notify] on_event` hook + `/events` WS 推事件。消息存入 inbox。                 |
+| **C. daemon 也没开**        | rendezvous 离线暂存 sealed box（§3.8），TTL 24h。daemon 启动后拉取，做 B。                   |
+| **D. 机器整个关机**         | 同 C。TTL 过期后发起方需重发。                                                               |
 
 ### 7.2 通知 hook
 
@@ -766,6 +794,7 @@ peer-bridge/                          AGPL-3.0
 ```
 
 依赖关系：
+
 ```
 protocol  ←  core  ←  daemon  ←  pi-bridge
               ↑          ↑
@@ -785,6 +814,7 @@ rendezvous 仅依赖 protocol
 **必须产出**：
 
 1. **`.telos/` bootstrap**
+
    - `.telos/README.md`（索引）
    - `.telos/BACKLOG.md`（已知缺口分类）
    - `facts/` 至少包含：
@@ -810,6 +840,7 @@ rendezvous 仅依赖 protocol
      - `wait-gap-message-visibility.md`（status: open，§3.11 T2，记录 send response 缓解但未根除）
 
 2. **`docs/protocol.md`**：字节级协议规范
+
    - 所有信令消息的 JSON schema + 示例
    - 所有 P2P frame 的 CBOR 字段 + 示例
    - 邀请码生成的位序、字典选择、校验
@@ -818,6 +849,7 @@ rendezvous 仅依赖 protocol
    - 加密细节：Ed25519 → X25519 转换调用、sealed_box 参数、签名内容拼接顺序
 
 3. **Test vectors**（`packages/protocol/test-vectors/`）：每个加密/编码原语提供至少 3 组 (input, output) 测试向量。M1 实现必须通过这些向量。
+
    - peer_id 编码（5 组）
    - 邀请码生成与 hash（3 组）
    - sealed box 加密/解密（3 组，包含一组带边界条件）
@@ -827,6 +859,7 @@ rendezvous 仅依赖 protocol
 4. **agent-blind 检查**：M0 收尾前，开一个新 context 的 agent，仅给它 `.telos/` 和 `docs/protocol.md`，让它"设计 daemon 收到 file_offer 后的处理流程"。如果它能给出和 §6 一致的方案，M0 通过。如果不行，把缺口加进 `.telos/BACKLOG.md` 后再补。
 
 **M0 的退出条件**：
+
 - 所有 §3 关键决策都有对应的 telos decision 文件（含 alternatives）
 - §3.11 列出的两个 tension 入库为 status: open
 - protocol.md 中的二进制布局每个字节都有归属
@@ -836,6 +869,7 @@ rendezvous 仅依赖 protocol
 ### M1：协议骨架 + 单机闭环
 
 依据 M0 文档实现：
+
 - `packages/protocol`：类型定义 + test vectors runner
 - `packages/core`：identity / known-peers / invite / 消息编解码 / sealed box
 - 单元测试通过 M0 给出的所有 test vectors
@@ -924,6 +958,7 @@ rendezvous 仅依赖 protocol
 **从 M0 开始**。M0 的 deliverable 是文档（`.telos/` + `docs/protocol.md` + test vectors），不是可运行代码。M1 才开始写代码。
 
 M0 工作步骤建议：
+
 1. 读完本 spec 全文
 2. bootstrap `.telos/` 三个目录 + README + BACKLOG
 3. 把 §3 每个决策写成 decision 文件（alternatives 从对话历史摘）

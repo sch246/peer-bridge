@@ -243,10 +243,7 @@ export class RendezvousClient extends EventEmitter {
       'invite_result',
     );
     if (result.error) {
-      throw new RendezvousError(
-        result.error as string,
-        `invite_create failed: ${result.error}`,
-      );
+      throw new RendezvousError(result.error as string, `invite_create failed: ${result.error}`);
     }
     return {
       peer_id: result.peer_id as string,
@@ -266,10 +263,7 @@ export class RendezvousClient extends EventEmitter {
       'invite_result',
     );
     if (result.error) {
-      throw new RendezvousError(
-        result.error as string,
-        `invite_redeem failed: ${result.error}`,
-      );
+      throw new RendezvousError(result.error as string, `invite_redeem failed: ${result.error}`);
     }
     return {
       peer_id: result.peer_id as string,
@@ -323,13 +317,7 @@ export class RendezvousClient extends EventEmitter {
       } catch (err) {
         this._pendingRequest = null;
         release();
-        reject(
-          new RendezvousError(
-            'send_failed',
-            `Failed to send ${type} request`,
-            err,
-          ),
-        );
+        reject(new RendezvousError('send_failed', `Failed to send ${type} request`, err));
       }
     });
   }

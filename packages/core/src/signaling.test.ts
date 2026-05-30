@@ -666,7 +666,10 @@ describe('RendezvousClient', () => {
     const { server, url } = await createMockServer((ws) => {
       ws.on('message', (raw) => {
         const msg = JSON.parse(raw.toString());
-        rxFrames.push({ type: msg.type as string, payload: msg.payload as Record<string, unknown> });
+        rxFrames.push({
+          type: msg.type as string,
+          payload: msg.payload as Record<string, unknown>,
+        });
 
         if (msg.type === 'register') {
           ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
@@ -699,7 +702,11 @@ describe('RendezvousClient', () => {
 
     // Only one lookup frame should be on the wire
     const lookupFrames = rxFrames.filter((f) => f.type === 'lookup');
-    assert.strictEqual(lookupFrames.length, 1, 'second lookup must not be sent before first resolves');
+    assert.strictEqual(
+      lookupFrames.length,
+      1,
+      'second lookup must not be sent before first resolves',
+    );
     assert.strictEqual(lookupFrames[0].payload.peer_id, 'peer-a');
 
     // Release the first response

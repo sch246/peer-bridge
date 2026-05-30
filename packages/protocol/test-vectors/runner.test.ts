@@ -108,21 +108,28 @@ describe('CBOR frame encoding', () => {
           break;
         }
         case 'room:msg': {
-          const m = msg as import('../src/types.js').RoomMessage;
-          assert.strictEqual(decoded.body, m.body);
-          assert.strictEqual(decoded.kind, m.kind);
-          assert.strictEqual(decoded.seq, m.seq);
-          assert.strictEqual(decoded.ts, m.ts);
+          const m = msg as import('../src/types.js').RoomMsg;
+          assert.deepStrictEqual(decoded.room_id, m.room_id, 'room_id round-trip');
+          assert.deepStrictEqual(decoded.sender_peer_id, m.sender_peer_id, 'sender_peer_id round-trip');
+          assert.strictEqual(decoded.body, m.body, 'body round-trip');
+          assert.strictEqual(decoded.kind, m.kind, 'kind round-trip');
+          assert.strictEqual(decoded.seq, m.seq, 'seq round-trip');
+          assert.strictEqual(decoded.ts, m.ts, 'ts round-trip');
           break;
         }
         case 'room:file_offer': {
           const fo = msg as import('../src/types.js').RoomFileOffer;
-          assert.strictEqual(decoded.file_id, fo.file_id);
-          assert.strictEqual(decoded.name, fo.name);
-          assert.strictEqual(decoded.size, fo.size);
-          assert.strictEqual(decoded.note ?? '', fo.note ?? '');
-          assert.strictEqual(decoded.seq, fo.seq);
-          assert.strictEqual(decoded.ts, fo.ts);
+          // Regression guard: previously file_id and sender_peer_id collided at
+          // CBOR key 2; seq and size collided at key 5. Verify every field round-trips.
+          assert.deepStrictEqual(decoded.room_id, fo.room_id, 'room_id round-trip');
+          assert.strictEqual(decoded.file_id, fo.file_id, 'file_id round-trip (was clobbered by sender_peer_id)');
+          assert.deepStrictEqual(decoded.sender_peer_id, fo.sender_peer_id, 'sender_peer_id round-trip');
+          assert.strictEqual(decoded.name, fo.name, 'name round-trip');
+          assert.strictEqual(decoded.size, fo.size, 'size round-trip (was clobbered by seq)');
+          assert.deepStrictEqual(decoded.sha256, fo.sha256, 'sha256 round-trip');
+          assert.strictEqual(decoded.note ?? '', fo.note ?? '', 'note round-trip');
+          assert.strictEqual(decoded.seq, fo.seq, 'seq round-trip');
+          assert.strictEqual(decoded.ts, fo.ts, 'ts round-trip');
           break;
         }
         case 'room:file_chunk': {

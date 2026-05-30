@@ -36,8 +36,9 @@ identity.key
 identity.pub
 known_peers.toml
 
-# pi-lens local cache
-.pi-lens/cache/
+# pi-lens local cache (any depth, including monorepo packages)
+.pi-lens/
+**/.pi-lens/
 
 # Windows artifacts (bash redirect bug)
 nul

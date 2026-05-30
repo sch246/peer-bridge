@@ -84,7 +84,35 @@ M0 阶段要求执行 agent-blind 检查：给 clean agent 仅 `.telos/` 和 `do
 | BACKLOG 从 diff 中自动充填         |                                      |
 | 协议可复用（未来 M0 重做时直接套） |                                      |
 
+## Coverage gap pattern（在 M1 reviewer 发现后补充）
+
+Agent-blind 检查抳不到一类 bug：**telos 未规定、但实现中会却不得不面对的工程决定**。
+
+具体例子（commit `2412765`）：protocol.md 列了字段名但没钉死 CBOR integer key 分配，实现者选了“按 message type 复用 key”，造成 `room:file_offer` wire 静默 corrupt。
+- agent-blind 抳不到：subagent 会同样选复用（telos 没说不该复用）
+- drift-check 抳不到：code 严格匹配 telos 详细度
+- 只有 implementation review（在 frame.ts 看到同一 map 下两个字段用同 key）才能发现
+
+这是 telos 的**覆盖盒区**问题（不是保真度问题）。
+
+### 升级提案（概况 / 未实施）
+
+未来 agent-blind 检查增加一个输出区段：
+
+```
+【输出格式额外要求】
+... (原有要求) ...
+最后一节：“我做了哪些 telos 没明说的工程决定”
+  - 列出你在不得不决定但 telos 没提供明确指导的点
+  - 例：“telos 没说 CBOR integer key 是否可复用，我默认按 message-type 不交的复用了。”
+  - 这些都是 telos 覆盖盒区候选 → BACKLOG
+```
+
+这把 agent-blind 从“信息完整性测试”升级为“信息完整性 + 隐性决定曝光”。未实施原因：还没跨 milestone 检查机会，M4 daemon 启动时一并补。
+
 ## Related
 
 - DESIGN.md §11.M0 (步骤 8: agent-blind 检查)
 - DESIGN.md §14 (给 agent 的实现起点 — 步骤 10: 把 agent-blind 发现的缺口入 BACKLOG)
+- Decision: `unique-cbor-keys-not-message-scoped.md` (触发本节 coverage gap 思考的具体 bug)
+- Reviewer report: `chain-runs/4f6c4fb6/reviewer.md` F1

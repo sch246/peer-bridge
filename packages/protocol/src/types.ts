@@ -1,23 +1,34 @@
 // Protocol message type definitions for peer-bridge.
 // All DataChannel messages use CBOR encoding with integer keys (see protocol.md Appendix B).
 
-/** CBOR integer keys for all message fields */
+/**
+ * CBOR integer keys for all message fields.
+ *
+ * INVARIANT: every protocol field holds a UNIQUE integer key. Reusing keys
+ * across message types caused a silent wire-corruption bug in `room:file_offer`
+ * (e.g. file_id and sender_peer_id both at key 2 — the second assignment
+ * overwrote the first in the CBOR map).
+ *
+ * Spec authority: docs/protocol.md §Appendix B.
+ * Decision: .telos/decisions/unique-cbor-keys-not-message-scoped.md
+ * Fact:     .telos/facts/cbor-key-allocation.md
+ */
 export const CBOR_KEYS = {
   type: 0,
   room_id: 1,
-  version: 1,
   sender_peer_id: 2,
-  file_id: 2,
-  capabilities: 2,
   body: 3,
-  reason: 3,
-  data: 3,
   kind: 4,
-  name: 4,
   seq: 5,
-  size: 5,
   sha256: 6,
   note: 7,
+  version: 8,
+  capabilities: 9,
+  file_id: 10,
+  name: 11,
+  size: 12,
+  data: 13,
+  reason: 14,
   ts: 99,
 } as const;
 
@@ -122,38 +133,15 @@ export interface RoomFileAbort extends ProtoMessage {
   reason: string;
 }
 
-export interface RoomResyncRequest extends ProtoMessage {
-  type: typeof MSG_TYPES.ROOM_RESYNC_REQUEST;
-  room_id: Uint8Array;
-  sender: Uint8Array; // 32 bytes
-  from_seq: number;
-  to_seq: number;
-}
-
-export interface RoomResyncResponse extends ProtoMessage {
-  type: typeof MSG_TYPES.ROOM_RESYNC_RESPONSE;
-  room_id: Uint8Array;
-  messages: RoomMsg[];
-}
-
-// ── Room management (v2) ──
-
-export interface RoomInvite extends ProtoMessage {
-  type: typeof MSG_TYPES.ROOM_INVITE;
-  room_id: Uint8Array;
-  inviter_peer_id: Uint8Array;
-  room_name: string;
-}
-
-export interface RoomJoin extends ProtoMessage {
-  type: typeof MSG_TYPES.ROOM_JOIN;
-  room_id: Uint8Array;
-}
-
-export interface RoomLeave extends ProtoMessage {
-  type: typeof MSG_TYPES.ROOM_LEAVE;
-  room_id: Uint8Array;
-}
+// Resync (RoomResyncRequest/Response) and v2 room management (RoomInvite/Join/Leave)
+// intentionally OMITTED from the M1 union. They belong to M4 (daemon) and a future
+// milestone. Their previous half-implementation (encode-only, no decode case, with
+// from_seq/to_seq smuggled into the seq/sha256 keys) was removed because:
+//   1. Half-implementations create false coverage in `RoomMessage`-typed code.
+//   2. The smuggling pattern violates the "unique CBOR key per field" invariant.
+// They will be added back when their owning milestone arrives, with proper decode
+// cases and dedicated CBOR keys.
+// See BACKLOG.md "resync messages" and "v2 room management".
 
 // ── Union type ──
 
@@ -167,9 +155,4 @@ export type RoomMessage =
   | RoomFileReject
   | RoomFileChunk
   | RoomFileDone
-  | RoomFileAbort
-  | RoomResyncRequest
-  | RoomResyncResponse
-  | RoomInvite
-  | RoomJoin
-  | RoomLeave;
+  | RoomFileAbort;

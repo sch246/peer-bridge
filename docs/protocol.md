@@ -723,18 +723,30 @@ Y=24, Z=25, 2=26, 3=27, 4=28, 5=29, 6=30, 7=31
 
 ## Appendix B: CBOR Integer Keys
 
-| Key | 字段                                    |
-| --- | --------------------------------------- |
-| 0   | type                                    |
-| 1   | room_id / version                       |
-| 2   | sender_peer_id / file_id / capabilities |
-| 3   | body / reason / data                    |
-| 4   | kind / name                             |
-| 5   | seq / size                              |
-| 6   | sha256                                  |
-| 7   | note                                    |
-| 8   | seq (for file_offer)                    |
-| 99  | ts (所有消息)                           |
+**Invariant**: 每个 protocol 字段持有**唯一** CBOR integer key。**不允许**按 message type scope 复用 key。
+
+理由见 `.telos/decisions/unique-cbor-keys-not-message-scoped.md`。简言之：JS 对象的 key 覆盖语义让"按 message type 复用"在同一 message 同时使用两个共享 key 时静默 corrupt（旧版本的 `room:file_offer` encode 路径就有此 bug）。
+
+| Key | 字段           |
+| --- | -------------- |
+| 0   | type           |
+| 1   | room_id        |
+| 2   | sender_peer_id |
+| 3   | body           |
+| 4   | kind           |
+| 5   | seq            |
+| 6   | sha256         |
+| 7   | note           |
+| 8   | version        |
+| 9   | capabilities   |
+| 10  | file_id        |
+| 11  | name           |
+| 12  | size           |
+| 13  | data           |
+| 14  | reason         |
+| 99  | ts (所有非 file_chunk 消息) |
+
+**注**: 之前 "key 8 = seq (for file_offer)" 的特例已删除——"每字段唯一 key" 让特例不再需要。
 
 ## Appendix C: DataChannel 配置
 

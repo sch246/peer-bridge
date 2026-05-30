@@ -77,18 +77,9 @@ function messageToCBORMap(msg: RoomMessage): Record<number, unknown> {
       map[CBOR_KEYS.reason] = msg.reason;
       break;
     }
-    case 'room:resync_request': {
-      map[CBOR_KEYS.room_id] = msg.room_id;
-      map[CBOR_KEYS.sender_peer_id] = msg.sender;
-      map[CBOR_KEYS.seq] = msg.from_seq;
-      map[CBOR_KEYS.sha256] = msg.to_seq; // reuse sha256 key position for to_seq
-      break;
-    }
-    case 'room:resync_response': {
-      map[CBOR_KEYS.room_id] = msg.room_id;
-      // messages array → CBOR array
-      break;
-    }
+    // resync_request / resync_response and v2 room management types are
+    // not in the M1 union (types.ts). They will be added back with proper
+    // CBOR key assignments when their owning milestone (M4 / future) arrives.
   }
 
   // Timestamp always present for ProtoMessage types (everything except room:file_chunk)

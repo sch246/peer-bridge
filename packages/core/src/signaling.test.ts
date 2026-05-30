@@ -454,4 +454,399 @@ describe('RendezvousClient', () => {
       },
     );
   });
+
+  // ── Request methods (FIFO) ──────────────────────────────────────────────
+
+  it('lookup: resolves with {found:true, home} on success', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'lookup') {
+          ws.send(JSON.stringify({ type: 'lookup_result', found: true, home: 'rdv://home' }));
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    const result = await client.lookup('some-peer');
+    assert.strictEqual(result.found, true);
+    assert.strictEqual(result.home, 'rdv://home');
+
+    client.disconnect();
+  });
+
+  it('lookup: resolves with {found:false} when peer not found', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'lookup') {
+          ws.send(JSON.stringify({ type: 'lookup_result', found: false }));
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    const result = await client.lookup('no-such-peer');
+    assert.strictEqual(result.found, false);
+    assert.strictEqual(result.home, undefined);
+
+    client.disconnect();
+  });
+
+  it('inviteCreate: resolves with {peer_id, pubkey} on success', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'invite_create') {
+          ws.send(
+            JSON.stringify({
+              type: 'invite_result',
+              peer_id: 'PB-CREATOR',
+              pubkey: 'base64pub',
+            }),
+          );
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    const result = await client.inviteCreate({
+      code_hash: 'abc123',
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+    });
+    assert.strictEqual(result.peer_id, 'PB-CREATOR');
+    assert.strictEqual(result.pubkey, 'base64pub');
+
+    client.disconnect();
+  });
+
+  it('inviteCreate: rejects with RendezvousError on server error', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'invite_create') {
+          ws.send(JSON.stringify({ type: 'invite_result', error: 'invalid_request' }));
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    await assert.rejects(
+      () => client.inviteCreate({ code_hash: 'bad', expires_at: 'bad' }),
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'invalid_request');
+        return true;
+      },
+    );
+
+    client.disconnect();
+  });
+
+  it('inviteRedeem: resolves with {peer_id, pubkey} on success', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'invite_redeem') {
+          ws.send(
+            JSON.stringify({
+              type: 'invite_result',
+              peer_id: 'PB-INVITER',
+              pubkey: 'base64inviter',
+            }),
+          );
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    const result = await client.inviteRedeem('abc123');
+    assert.strictEqual(result.peer_id, 'PB-INVITER');
+    assert.strictEqual(result.pubkey, 'base64inviter');
+
+    client.disconnect();
+  });
+
+  it('inviteRedeem: rejects with RendezvousError code=not_found', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'invite_redeem') {
+          ws.send(JSON.stringify({ type: 'invite_result', error: 'not_found' }));
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    await assert.rejects(
+      () => client.inviteRedeem('no-such-code'),
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'not_found');
+        return true;
+      },
+    );
+
+    client.disconnect();
+  });
+
+  it('FIFO: two back-to-back lookups resolve in order', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'lookup') {
+          // Respond to each lookup with the peer_id from the request
+          const peerId = (msg.payload as Record<string, unknown>).peer_id as string;
+          ws.send(JSON.stringify({ type: 'lookup_result', found: true, home: `home/${peerId}` }));
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    // Issue two lookups back-to-back without awaiting
+    const p1 = client.lookup('peer-a');
+    const p2 = client.lookup('peer-b');
+
+    const results = await Promise.all([p1, p2]);
+    assert.strictEqual(results[0].found, true);
+    assert.strictEqual(results[0].home, 'home/peer-a');
+    assert.strictEqual(results[1].found, true);
+    assert.strictEqual(results[1].home, 'home/peer-b');
+
+    client.disconnect();
+  });
+
+  it('FIFO: second request frame is not sent until first resolves', async (t) => {
+    const kp = await generateKeyPair();
+    const rxFrames: Array<{ type: string; payload: Record<string, unknown> }> = [];
+    let resolveFirst: (() => void) | null = null;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        rxFrames.push({ type: msg.type as string, payload: msg.payload as Record<string, unknown> });
+
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'lookup') {
+          if (!resolveFirst) {
+            // Hold the first lookup response
+            resolveFirst = () => {
+              ws.send(JSON.stringify({ type: 'lookup_result', found: true }));
+            };
+          } else {
+            // Second lookup: respond immediately
+            ws.send(JSON.stringify({ type: 'lookup_result', found: false }));
+          }
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    // Issue first lookup — will be held by mock server
+    const firstPromise = client.lookup('peer-a');
+
+    // Issue second lookup — must queue behind the first
+    const secondPromise = client.lookup('peer-b');
+
+    // Wait a tick for the first frame to be sent (second should NOT be sent)
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Only one lookup frame should be on the wire
+    const lookupFrames = rxFrames.filter((f) => f.type === 'lookup');
+    assert.strictEqual(lookupFrames.length, 1, 'second lookup must not be sent before first resolves');
+    assert.strictEqual(lookupFrames[0].payload.peer_id, 'peer-a');
+
+    // Release the first response
+    resolveFirst!();
+    const firstResult = await firstPromise;
+    assert.strictEqual(firstResult.found, true);
+
+    // Now second should go through
+    const secondResult = await secondPromise;
+    assert.strictEqual(secondResult.found, false);
+
+    // Verify both frames were eventually sent in order
+    const allLookupFrames = rxFrames.filter((f) => f.type === 'lookup');
+    assert.strictEqual(allLookupFrames.length, 2);
+    assert.strictEqual(allLookupFrames[0].payload.peer_id, 'peer-a');
+    assert.strictEqual(allLookupFrames[1].payload.peer_id, 'peer-b');
+
+    client.disconnect();
+  });
+
+  it('FIFO: server error envelope rejects current request and releases slot', async (t) => {
+    const kp = await generateKeyPair();
+    let firstRejected = false;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'lookup') {
+          if (!firstRejected) {
+            // First lookup: send error envelope
+            firstRejected = true;
+            ws.send(JSON.stringify({ type: 'error', code: 'malformed', message: 'bad request' }));
+          } else {
+            // Second lookup: respond normally (FIFO slot was released by the error)
+            ws.send(JSON.stringify({ type: 'lookup_result', found: true }));
+          }
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    // First lookup gets an error from server
+    await assert.rejects(
+      () => client.lookup('bad'),
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'malformed');
+        return true;
+      },
+    );
+
+    // Second lookup succeeds — FIFO slot was properly released
+    const result = await client.lookup('good');
+    assert.strictEqual(result.found, true);
+
+    client.disconnect();
+  });
+
+  it('request before connect rejects with not_ready', async () => {
+    const kp = await generateKeyPair();
+    const client = new RendezvousClient({
+      keypair: kp,
+      url: 'ws://localhost:9999',
+    });
+
+    assert.strictEqual(client.state, 'disconnected');
+
+    // lookup rejects (async functions always return Promises; guard throws internally
+    // but it surfaces as a rejected Promise, not a synchronous throw)
+    await assert.rejects(
+      () => client.lookup('peer'),
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'not_ready');
+        return true;
+      },
+    );
+  });
+
+  it('request after disconnect rejects with not_ready', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    // Disconnect and await the disconnect event so state is deterministically 'disconnected'
+    const disconnectPromise = new Promise<void>((resolve) => {
+      client.once('disconnect', () => resolve());
+    });
+    client.disconnect();
+    await disconnectPromise;
+
+    assert.strictEqual(client.state, 'disconnected');
+
+    await assert.rejects(
+      () => client.lookup('peer'),
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'not_ready');
+        return true;
+      },
+    );
+  });
+
+  it('request method signs payload matching server auth contract', async (t) => {
+    const kp = await generateKeyPair();
+    const peerId = getPeerId(kp.publicKey);
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'lookup') {
+          // Verify the lookup payload is properly signed
+          const { payload, sig, ts } = msg;
+          assert.strictEqual(payload.peer_id, peerId);
+          const valid = verifyClientSignature(payload, sig, ts, kp.publicKey);
+          assert.strictEqual(valid, true, 'lookup signature must verify');
+
+          ws.send(JSON.stringify({ type: 'lookup_result', found: true }));
+        }
+      });
+    });
+    t.after(() => server.close());
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    const result = await client.lookup(peerId);
+    assert.strictEqual(result.found, true);
+
+    client.disconnect();
+  });
 });

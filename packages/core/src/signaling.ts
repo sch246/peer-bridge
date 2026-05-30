@@ -46,6 +46,22 @@ export interface RendezvousClientOptions {
   registerTimeoutMs?: number;
 }
 
+export interface LookupResponse {
+  found: boolean;
+  home?: string;
+}
+
+export interface InviteCreatePayload {
+  code_hash: string;
+  expires_at: string;
+  // pubkey and peer_id are auto-filled by the client from its own identity
+}
+
+export interface InviteResultResponse {
+  peer_id: string;
+  pubkey: string;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Error
 // ═════════════════════════════════════════════════════════════════════════════
@@ -91,6 +107,19 @@ export class RendezvousClient extends EventEmitter {
   private _registerResolver: {
     resolve: (msg: { server_id: string; federation_size: number }) => void;
     reject: (err: Error) => void;
+  } | null = null;
+
+  // [choice] C5: FIFO queue-wait — queue the second call until the first resolves.
+  // Chose queue-wait over fail-fast because caller UX is simpler (no retry loop)
+  // and queue depth is bounded by the caller. Per D2, at-most-one in-flight is enforced
+  // on the wire; this queue is internal client-side serialization.
+  // [choice] FIFO shape: chained promise (simpler than explicit queue — just
+  // a single tail promise that each call chains onto).
+  private _fifoQueue: Promise<void> = Promise.resolve();
+  private _pendingRequest: {
+    resolve: (value: unknown) => void;
+    reject: (err: Error) => void;
+    expectedType: string;
   } | null = null;
 
   constructor(options: RendezvousClientOptions) {
@@ -177,6 +206,149 @@ export class RendezvousClient extends EventEmitter {
     }
   }
 
+  // ── Request methods ────────────────────────────────────────────────────
+
+  /**
+   * Look up a peer by peer_id. Returns { found, home? }.
+   * @throws {RendezvousError} with code 'not_ready' if client is not in 'ready' state.
+   */
+  async lookup(peerId: string): Promise<LookupResponse> {
+    this._guardReady();
+    const result = await this._sendRequest<Record<string, unknown>>(
+      'lookup',
+      { peer_id: peerId },
+      'lookup_result',
+    );
+    return {
+      found: result.found as boolean,
+      home: result.home as string | undefined,
+    };
+  }
+
+  /**
+   * Create an invite. The client auto-fills pubkey and peer_id from its own identity.
+   * @throws {RendezvousError} with code from server error on failure.
+   */
+  async inviteCreate(payload: InviteCreatePayload): Promise<InviteResultResponse> {
+    this._guardReady();
+    const fullPayload: Record<string, unknown> = {
+      code_hash: payload.code_hash,
+      pubkey: Buffer.from(this._keypair.publicKey).toString('base64'),
+      peer_id: this._peerId,
+      expires_at: payload.expires_at,
+    };
+    const result = await this._sendRequest<Record<string, unknown>>(
+      'invite_create',
+      fullPayload,
+      'invite_result',
+    );
+    if (result.error) {
+      throw new RendezvousError(
+        result.error as string,
+        `invite_create failed: ${result.error}`,
+      );
+    }
+    return {
+      peer_id: result.peer_id as string,
+      pubkey: result.pubkey as string,
+    };
+  }
+
+  /**
+   * Redeem an invite by code_hash.
+   * @throws {RendezvousError} with code from server error on failure.
+   */
+  async inviteRedeem(codeHash: string): Promise<InviteResultResponse> {
+    this._guardReady();
+    const result = await this._sendRequest<Record<string, unknown>>(
+      'invite_redeem',
+      { code_hash: codeHash },
+      'invite_result',
+    );
+    if (result.error) {
+      throw new RendezvousError(
+        result.error as string,
+        `invite_redeem failed: ${result.error}`,
+      );
+    }
+    return {
+      peer_id: result.peer_id as string,
+      pubkey: result.pubkey as string,
+    };
+  }
+
+  // ── Internal helpers ───────────────────────────────────────────────────
+
+  /**
+   * Send a signed request frame and await the matching response.
+   * Enforces FIFO serialization — at most one in-flight on the wire.
+   */
+  private async _sendRequest<T>(
+    type: string,
+    payload: Record<string, unknown>,
+    expectedResponseType: string,
+  ): Promise<T> {
+    // FIFO: wait for previous request to complete
+    const prev = this._fifoQueue;
+    let release: () => void = () => {};
+    this._fifoQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await prev;
+
+    await initCrypto();
+    const ws = this._ws!;
+    const ts = new Date().toISOString();
+    const sig = this._sign(payload, ts);
+
+    return new Promise<T>((resolve, reject) => {
+      // [choice] release() is called inside resolve/reject wrappers, not in a
+      // finally block, because the FIFO slot must be held until the response
+      // arrives — not until the frame is sent.
+      this._pendingRequest = {
+        resolve: (value: unknown) => {
+          release();
+          resolve(value as T);
+        },
+        reject: (err: Error) => {
+          release();
+          reject(err);
+        },
+        expectedType: expectedResponseType,
+      };
+
+      try {
+        ws.send(JSON.stringify({ type, payload, sig, ts }));
+      } catch (err) {
+        this._pendingRequest = null;
+        release();
+        reject(
+          new RendezvousError(
+            'send_failed',
+            `Failed to send ${type} request`,
+            err,
+          ),
+        );
+      }
+    });
+  }
+
+  /**
+   * [choice] request-before-connect: reject synchronously with code 'not_ready'.
+   * Chose 'not_ready' over reusing 'register_failed' because the semantic distinction
+   * matters — not_ready means "call connect() first", while register_failed means
+   * "the connect attempt itself failed". Different recovery paths.
+   */
+  private _guardReady(): void {
+    if (this._state !== 'ready') {
+      throw new RendezvousError(
+        'not_ready',
+        `Cannot send request when state is "${this._state}". Must be "ready".`,
+      );
+    }
+  }
+
   // ── Internal ────────────────────────────────────────────────────────────
 
   /**
@@ -239,14 +411,45 @@ export class RendezvousClient extends EventEmitter {
         return;
       }
 
-      // 2a: only handle register_ok. 2b/2c will dispatch more message types.
+      // Handle register_ok during connect flow
       if (msg.type === 'register_ok' && this._registerResolver) {
         this._registerResolver.resolve({
           server_id: msg.server_id as string,
           federation_size: msg.federation_size as number,
         });
+        return;
       }
-      // 2b/2c: lookup_result, invite_result, signal_in, notify_in stubs
+
+      // Handle error envelope (server can send {type: "error", ...} mid-FIFO)
+      if (msg.type === 'error' && this._pendingRequest) {
+        const pending = this._pendingRequest;
+        this._pendingRequest = null;
+        pending.reject(
+          new RendezvousError(
+            (msg.code as string) || 'server_error',
+            (msg.message as string) || 'Server error',
+          ),
+        );
+        return;
+      }
+
+      // Dispatch to pending request if type matches expected
+      if (this._pendingRequest) {
+        if (msg.type === this._pendingRequest.expectedType) {
+          const pending = this._pendingRequest;
+          this._pendingRequest = null;
+          pending.resolve(msg);
+          return;
+        }
+        // Unexpected type while waiting — tolerate (forward-compat)
+        return;
+      }
+
+      // [choice] Push messages (signal_in, notify_in): silently ignore in 2b.
+      // 2c will install real handlers that emit events for push dispatch.
+      if (msg.type === 'signal_in' || msg.type === 'notify_in') {
+        return;
+      }
     });
 
     ws.on('close', (code: number, reason: Buffer) => {
@@ -258,6 +461,18 @@ export class RendezvousClient extends EventEmitter {
           new RendezvousError(
             'register_failed',
             `Connection closed during register: ${code} ${reason.toString()}`,
+          ),
+        );
+      }
+
+      // Reject pending request if in-flight
+      if (this._pendingRequest) {
+        const pending = this._pendingRequest;
+        this._pendingRequest = null;
+        pending.reject(
+          new RendezvousError(
+            'connection_closed',
+            `Connection closed while waiting for response: ${code} ${reason.toString()}`,
           ),
         );
       }

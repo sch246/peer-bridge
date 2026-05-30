@@ -40,6 +40,7 @@ Server-side `invite_records` created by a successful `invite_create` **survive**
 Client maintains pending `invite_create` state across reconnect. After `register_ok` arrives on the new connection, client auto-resends the buffered `invite_create`.
 
 **否决理由**:
+
 1. Violates D3 fresh-session philosophy without compensating UX gain — the user must wait for reconnect either way.
 2. Introduces cross-reconnect persistence in the signaling client (buffer management, timeout, dedup logic) for a marginal convenience.
 3. If the server already processed the original `invite_create` before disconnect, the re-send is an idempotent no-op (invite already exists by `code_hash`), but the client still carries unnecessary state.

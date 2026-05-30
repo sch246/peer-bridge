@@ -35,6 +35,10 @@ jobs:
         shell: bash
         run: pnpm install --frozen-lockfile
 
+      - name: Format check
+        shell: bash
+        run: pnpm format:check
+
       - name: Build protocol
         shell: bash
         run: pnpm --filter @peer-bridge/protocol build
@@ -43,22 +47,6 @@ jobs:
         shell: bash
         run: pnpm --filter @peer-bridge/core build
 
-      - name: Test protocol test-vectors
+      - name: Test
         shell: bash
-        run: npx tsx --test packages/protocol/test-vectors/runner.test.ts
-
-      - name: Test core crypto
-        shell: bash
-        run: npx tsx --test packages/core/src/crypto.test.ts
-
-      - name: Test core vectors
-        shell: bash
-        run: npx tsx --test packages/core/src/vectors.test.ts
-
-      - name: Test core known-peers
-        shell: bash
-        run: npx tsx --test packages/core/src/known-peers.test.ts
-
-      - name: Test core invite
-        shell: bash
-        run: npx tsx --test packages/core/src/invite.test.ts
+        run: pnpm -r test

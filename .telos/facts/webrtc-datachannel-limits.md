@@ -40,6 +40,15 @@
 | **创建 DataChannel 时机** | 在 `negotiated` 模式、或 `onDataChannel` 回调中接收      |
 | **默认 reliability**      | `ordered` + 可靠（无 maxRetransmits/maxPacketLifeTime）  |
 
+## 验证（M3 sanity probe）
+
+`packages/p2p-probe` 在 commit `7f2e7ac` 上跳通：
+
+- `node-datachannel@0.32.3` 通过 `prebuild-install` 在三平台 Node 22 都装上了预编译二进制；CI run [26687227899](https://github.com/sch246/peer-bridge/actions/runs/26687227899) 三 cell 全绿（`ubuntu-latest` / `macos-latest` / `windows-latest`）。
+- 本地两个 in-process `PeerConnection` 握手 ~1s，DataChannel 字符串往返正常。
+- ESM `import nodeDataChannel from 'node-datachannel'` 打开即用，类型从包内解析。
+- 不需要系统依赖（无 apt/brew 附加包），`pnpm install` 不触发源码编译。
+
 ## 对 peer-bridge 的影响
 
 1. **文件 chunk 大小 = 64 KiB**：SCTP 单消息上限，应用层分片必需

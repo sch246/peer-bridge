@@ -6,6 +6,9 @@
   "license": "AGPL-3.0",
   "type": "module",
   "scripts": {
+    "prepare": "husky",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
@@ -17,7 +20,13 @@
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "husky": "9.1.7",
+    "lint-staged": "15.2.10",
+    "prettier": "3.3.3",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,json,md,yml,yaml}": "prettier --write"
   }
 }

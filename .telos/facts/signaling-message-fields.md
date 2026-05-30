@@ -26,13 +26,13 @@ Client ↔ rendezvous WebSocket 信令消息的字段 catalog。DESIGN.md §5.1 
 
 ### Server → Client
 
-| Message Type    | Required Fields                | Optional Fields              | Notes                                                                            |
-| --------------- | ------------------------------ | ---------------------------- | -------------------------------------------------------------------------------- |
-| `register_ok`   | `server_id`, `federation_size` | —                            | **不包含** `origin_server`。`origin_server` 仅在 §5.2 联邦 `proxy_signal` 中出现 |
-| `lookup_result` | `found`                        | `home`                       | `home` 仅在 `found: true` 时存在                                                 |
-| `invite_result` | —                              | `peer_id`, `pubkey`, `error` | 同时作为 `invite_create` 和 `invite_redeem` 的响应 envelope。invite_create 成功时返回 creator 身份（确认），失败时 `{error: "invalid_request"}`。invite_redeem 成功时返回 inviter 身份，失败时 `{error: "not_found"}`                        |
-| `signal_in`     | `from`, `payload`              | —                            |                                                                                  |
-| `notify_in`     | `sealed_box`, `queued_at`      | —                            |                                                                                  |
+| Message Type    | Required Fields                | Optional Fields              | Notes                                                                                                                                                                                                                 |
+| --------------- | ------------------------------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `register_ok`   | `server_id`, `federation_size` | —                            | **不包含** `origin_server`。`origin_server` 仅在 §5.2 联邦 `proxy_signal` 中出现                                                                                                                                      |
+| `lookup_result` | `found`                        | `home`                       | `home` 仅在 `found: true` 时存在                                                                                                                                                                                      |
+| `invite_result` | —                              | `peer_id`, `pubkey`, `error` | 同时作为 `invite_create` 和 `invite_redeem` 的响应 envelope。invite_create 成功时返回 creator 身份（确认），失败时 `{error: "invalid_request"}`。invite_redeem 成功时返回 inviter 身份，失败时 `{error: "not_found"}` |
+| `signal_in`     | `from`, `payload`              | —                            |                                                                                                                                                                                                                       |
+| `notify_in`     | `sealed_box`, `queued_at`      | —                            |                                                                                                                                                                                                                       |
 
 ### 字段验证规则
 
@@ -53,12 +53,12 @@ Client ↔ rendezvous WebSocket 信令消息的字段 catalog。DESIGN.md §5.1 
 
 `invite_result.error` 是 string。以下是所有预期取值：
 
-| Value | When emitted | Spec source |
-| --- | --- | --- |
-| `not_found` | `invite_redeem` 的 code_hash 从未存在过 OR 已被 consume 并删除 | DESIGN.md §5.1（唯一 spec 定义值） |
-| `expired` | `invite_redeem` 收到 `expires_at < now` 的 code_hash | brief #1 implementer choice（自 commit 3f192e7 沉积） |
-| `already_redeemed` | `invite_redeem` 收到曾经有效但已被 consume 的 code_hash（竞态） | brief #1 implementer choice — 语义上区别于 `not_found`，但若已 redeem 的 invite 已从 `invite_records` 删除，server 可能 collapse 为 `not_found` |
-| `invalid_request` | `invite_create` 或 `invite_redeem` 缺少/格式错误 required fields（如 missing `code_hash`） | brief #1 implementer choice |
+| Value              | When emitted                                                                               | Spec source                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `not_found`        | `invite_redeem` 的 code_hash 从未存在过 OR 已被 consume 并删除                             | DESIGN.md §5.1（唯一 spec 定义值）                                                                                                              |
+| `expired`          | `invite_redeem` 收到 `expires_at < now` 的 code_hash                                       | brief #1 implementer choice（自 commit 3f192e7 沉积）                                                                                           |
+| `already_redeemed` | `invite_redeem` 收到曾经有效但已被 consume 的 code_hash（竞态）                            | brief #1 implementer choice — 语义上区别于 `not_found`，但若已 redeem 的 invite 已从 `invite_records` 删除，server 可能 collapse 为 `not_found` |
+| `invalid_request`  | `invite_create` 或 `invite_redeem` 缺少/格式错误 required fields（如 missing `code_hash`） | brief #1 implementer choice                                                                                                                     |
 
 > **Note (当前 M2 行为):** `expired` 和 `already_redeemed` 在当前 M2 server 中均 collapse 为 `not_found` — `handleInviteRedeem` 对所有非成功路径统一返回 `{ found: false }`，`sendInviteRedeemResult` 映射为 `error: "not_found"`。未来实现可选择保留短暂 "tombstone" 以区分 `expired`/`already_redeemed`，或继续 collapse。本枚举是 contract，M2 的实际 emit 是其子集。
 

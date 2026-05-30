@@ -24,6 +24,35 @@ Client → rendezvous JSON signaling has **at-most-one in-flight request at a ti
 - Fact: [signaling-message-fields](../facts/signaling-message-fields.md) — 字段清单 authoritative。"字段清单即 spec"的 discipline：adding `request_id` 会违反此 fact。
 - DESIGN.md §5.2 — 联邦协议（`federation/query`、`federation/proxy_signal`）**确实**使用 `request_id` UUID。Client signaling 和 federation 的分野是有意设计——client 单连接单查询，federation 需并行 server-to-server 查询。
 
+## Client-Side Refinement: Queue-Wait Discipline
+
+The signaling client (`RendezvousClient`) implements **queue-wait** semantics for its request methods (`lookup`, `invite_create`, `invite_redeem`): when `_pendingRequest` is already set and a second request method is called before the first settles, the second call **awaits the previous request's settlement** before sending its own frame — rather than rejecting immediately.
+
+Implementation: a single `_pendingRequest` chain with `_fifoQueue` tail Promise. Each request call atomically appends to the chain; the chain drains serially. The client is a single-connection, single-threaded resource — queue-wait centralizes retry/queuing complexity in one place rather than forcing every caller to implement its own retry loop.
+
+### Observable behavior
+
+- Callers never see a "busy" error from concurrent invocations of request methods. Instead, the second call silently waits for the first to complete, then proceeds.
+- Wire-level serialization is preserved — only one request frame is in flight at any time (verifying this decision's "at-most-one-in-flight" constraint at the transport level).
+- Verified by test 19 in `packages/core/src/signaling.test.ts`: second frame not sent until first resolves.
+
+### Boundaries (queue-wait)
+
+- Applies **only** to client→server request methods: `lookup`, `invite_create`, `invite_redeem`. These are the methods that await a server response and participate in `_pendingRequest` tracking.
+- **Push messages** (`signal_in`, `notify_in`) bypass FIFO entirely — they arrive on the incoming side regardless of pending request state.
+- **Fire-and-forget** methods (`signal`, `notify`) bypass FIFO entirely — they have no response and do not enter the `_pendingRequest` chain.
+- This is a signaling-client-layer decision. Does **not** constrain server-side behavior (server may still process requests in any order — this decision says server behavior on concurrent requests is unspecified).
+- Implementation: `packages/core/src/signaling.ts` `_sendRequest()` helper, commits bc83c0b + 093510e + 42903e9.
+
+### Why queue-wait over fail-fast
+
+The alternative considered was **fail-fast**: when `_pendingRequest` is set, the second call immediately rejects with a "busy" error. This was rejected because:
+
+1. It forces every caller (CLI commands, future daemon code) to implement its own retry loop externally. The "busy" error is transient and retryable by nature — pushing retry to callers duplicates complexity.
+2. Queue-wait keeps the serialization guarantee while providing a caller-friendly API surface. Callers interact with the client as if it were always available.
+
+**git 历史**: `git log --oneline -- packages/core/src/signaling.ts` shows the FIFO implementation evolved across bc83c0b → 093510e → 42903e9. No prior fail-fast implementation was committed; the queue-wait approach was chosen during implementation of brief #2b and refined in #2c.
+
 ## Boundaries
 
 - Applies only to client ↔ rendezvous JSON signaling。

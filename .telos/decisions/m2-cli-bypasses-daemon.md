@@ -1,7 +1,8 @@
 ---
 id: m2-cli-bypasses-daemon
 kind: decision
-status: stable
+status: superseded
+superseded_by: m3-cli-p2p-bypass-daemon.md (for M3 P2P) + M4 daemon migration (for M4 send/recv via daemon)
 since: 2026-05-30
 ---
 
@@ -76,3 +77,9 @@ CLI 之间直接交换 invite code，不通过 rendezvous。
 - Fact: [signaling-message-fields](../facts/signaling-message-fields.md) — CLI 直接使用的消息字段规格。
 - Decision: [daemon-no-pi-spawn](../decisions/daemon-no-pi-spawn.md) — daemon scope（M4 交付物）。
 - DESIGN.md §6.4, §11.M2
+
+## Successor
+
+- **M3 P2P (current)**: `m3-cli-p2p-bypass-daemon.md` — M3 introduces its own CLI bypass decision for P2P transport (`packages/p2p`). The architectural pattern (CLI directly manages connections without daemon) extends from this M2 decision.
+- **M4 daemon (future)**: When `packages/daemon` is implemented (M4), CLI will route through daemon IPC. This decision and `m3-cli-p2p-bypass-daemon.md` together define the bypass period (M2 + M3); M4 implementation must explicitly migrate both CLI command paths.
+- **Status**: M2 closed (commits ending at `0e499ed`). This decision is no longer driving new work but remains an audit-trail anchor.

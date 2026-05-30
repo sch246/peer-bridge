@@ -116,4 +116,4 @@ These were considered during implementation (brief #2d):
 
 - Decision: [reconnect-requires-reregister](../decisions/reconnect-requires-reregister.md) (D3)
 - Decision: [invite-create-no-cross-reconnect-state](../decisions/invite-create-no-cross-reconnect-state.md) (Q-N4) — cross-reconnect pending state is dropped, interacting with the `ready → reconnecting` transition.
-- Decision: [signaling-client-fifo-queue-wait](../decisions/signaling-client-fifo-queue-wait.md) — queue-wait interacts with FSM: requests cannot be sent in `'disconnected'` or `'reconnecting'` states.
+- Decision: [signaling-fifo-no-request-id](../decisions/signaling-fifo-no-request-id.md) §Client-Side Refinement: Queue-Wait Discipline — queue-wait interacts with FSM: requests cannot be sent in `'disconnected'` or `'reconnecting'` states.

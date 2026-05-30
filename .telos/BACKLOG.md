@@ -137,6 +137,25 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 
 ---
 
+## M2 退出条件 (实现完成时检查)
+
+以下条目必须在 M2 标记为"完成"前满足。每个条目 cite 来源（agent-blind 表、本 audit、或 telos fact）。
+
+- [ ] **Re-run agent-blind check**：M2 实现完成后重跑 agent-blind 闭卷实验。上次回填的 6 个 telos 文件（commit `a89920e`）包括 WRONG-class 缺口：G-10（known_peers schema 被 blind 误用 `[[peers]]`/`name`/`trust = "trusted"`）和 G-18（blind 选择 raw Node.js `http` 而非 Fastify）。按 `decisions/agent-blind-check-protocol.md` 的"Re-run after backfill"准则（REFERENCE.md §Re-run after backfill）：回填包含 WRONG 级缺口时重跑**必须**而非可选——否则无法确认修正后的 telos 是否消除了此前误导。
+- [ ] **Resolve block-M2-exit known-unknowns**（来自 M2 agent-blind 表 T-4, T-7, T-8, T-10, T-12, T-13）：
+  - T-4: health check response fields 规格化（`facts/rendezvous-server-config.md` 已覆盖 server config surface，health check field spec 仍仅存于 DESIGN.md §6.1 / protocol.md Server Limits）
+  - T-7: per-peer 通知队列容量上限与溢出策略（drop-oldest vs reject-new）→ 需 decision 文件
+  - T-8: 通知队列 TTL 清理 schedule（lazy-clean vs cron tick）→ 需 decision 文件
+  - T-10: register 去重策略（同一 peer_id 重复 register 的行为）→ 需 decision 文件
+  - T-12: 除 `invite_create` 外的 per-IP rate limit 具体阈值（DESIGN.md §12 仅写"必须做"未枚举数值）→ 需 fact 文件绑定数值
+  - T-13: error response envelope 完整 spec（当前仅 `invite_result.error: "not_found"` 定义了一个错误值）→ 需 fact 文件
+- [ ] **Resolve timing/state-machine MISSING items**（来源：本 commit 的 pre-M2 audit `m2-pre-impl-checks.md` §3）：
+  - Q3 (peer disconnect behavior: immediate offline vs grace period) — [stuck] 实现者无法合理推断，需 pre-impl decision
+  - Q4 (concurrent in-flight requests + response correlation) — [stuck] 协议消息无 `request_id` 字段，需先确定 request-response 关联机制
+  - Q7 (invite_record deletion criteria: cancel + disconnect cases) — [choice] 实现者可在已知约束（expiry + single-use）下决定，但应记录决策
+  - Q8 (reconnect: client re-sends register vs server preserves session) — [stuck] 无任何 source 讨论 reconnect，需 pre-impl decision
+- [ ] **Verify rendezvous dependencies**：`packages/rendezvous/package.json` 添加 `fastify` + `ws` + `@fastify/websocket`（`facts/rendezvous-tech-stack.md` 已将其标注为 gap："M2 实现时添加"）
+
 ## 其他 BACKLOG（不阻塞 M2）
 
 - [ ] **Resync 消息重新引入 M4 时遵守 `unique-cbor-keys-not-message-scoped`**（之前的半成品把 `from_seq`/`to_seq` 填进 `seq`/`sha256` key，是反例）

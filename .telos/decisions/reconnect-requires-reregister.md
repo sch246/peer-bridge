@@ -73,6 +73,12 @@ Server 在 WS reopen 时将连接绑定到之前注册过的 `peer_id`（基于 
 | 无 token 存储/过期/重放问题 | 网络不稳定时频繁 register（可客户端退避吸收）                                |
 | 与 D1 一致（close = gone）  | `invite_create` 后立刻断连：invite 存活但 inviter 需重注册才能收 `signal_in` |
 
+## Edge case: orphan old socket on reconnect-while-open
+
+When the same `peer_id` registers on a second socket while the old socket is still open, the implementation **replaces** the registration in `peer_registrations` and **removes** the old socket from the `socket_to_peer` reverse map (`packages/rendezvous/src/handlers/register.ts:39-57`). The old socket is **not actively closed by the server**; it remains open until the client or network closes it. Subsequent messages on the old socket fail authentication ("Not registered") because the reverse mapping was removed.
+
+Source: `.telos/audit-trails/m2-exit-investigation-2026-05-30.md` §T-10, §A4.
+
 ## Related
 
 - Decision: [disconnect-immediate-offline](./disconnect-immediate-offline.md) — D1（WS close 立即离线）是本 decision 的前提。

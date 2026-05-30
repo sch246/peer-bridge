@@ -574,9 +574,9 @@ export class RendezvousClient extends EventEmitter {
         this._reconnectEnabled &&
         !this._explicitDisconnect &&
         (this._state === 'ready' ||
-         this._state === 'reconnecting' ||
-         (this._reconnectAttempt > 0 &&
-          (this._state === 'connecting' || this._state === 'registering')))
+          this._state === 'reconnecting' ||
+          (this._reconnectAttempt > 0 &&
+            (this._state === 'connecting' || this._state === 'registering')))
       ) {
         this._transition('reconnecting');
         this._scheduleReconnect();

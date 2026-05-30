@@ -876,7 +876,10 @@ describe('Push handlers + fire-and-forget', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
     await client.connect();
@@ -895,7 +898,12 @@ describe('Push handlers + fire-and-forget', () => {
     assert.ok(typeof signalFrame!.ts === 'string', 'ts must be present');
 
     // Verify signature
-    const valid = verifyClientSignature(payload, signalFrame!.sig as string, signalFrame!.ts as string, kp.publicKey);
+    const valid = verifyClientSignature(
+      payload,
+      signalFrame!.sig as string,
+      signalFrame!.ts as string,
+      kp.publicKey,
+    );
     assert.strictEqual(valid, true, 'signal signature must verify');
 
     client.disconnect();
@@ -911,7 +919,10 @@ describe('Push handlers + fire-and-forget', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
     await client.connect();
@@ -932,7 +943,10 @@ describe('Push handlers + fire-and-forget', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
     await client.connect();
@@ -970,7 +984,10 @@ describe('Push handlers + fire-and-forget', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
     await client.connect();
@@ -1000,7 +1017,10 @@ describe('Push handlers + fire-and-forget', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
     await client.connect();
@@ -1019,7 +1039,12 @@ describe('Push handlers + fire-and-forget', () => {
     assert.ok(typeof notifyFrame!.ts === 'string', 'ts must be present');
 
     // Verify signature
-    const valid = verifyClientSignature(payload, notifyFrame!.sig as string, notifyFrame!.ts as string, kp.publicKey);
+    const valid = verifyClientSignature(
+      payload,
+      notifyFrame!.sig as string,
+      notifyFrame!.ts as string,
+      kp.publicKey,
+    );
     assert.strictEqual(valid, true, 'notify signature must verify');
 
     client.disconnect();
@@ -1050,11 +1075,16 @@ describe('Push handlers + fire-and-forget', () => {
         if (msg.type === 'register') {
           // Send signal_in after register_ok (normal flow)
           ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
-          ws.send(JSON.stringify({ type: 'signal_in', from: 'PB-ALICE', payload: 'encrypted-stuff' }));
+          ws.send(
+            JSON.stringify({ type: 'signal_in', from: 'PB-ALICE', payload: 'encrypted-stuff' }),
+          );
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
 
@@ -1084,15 +1114,20 @@ describe('Push handlers + fire-and-forget', () => {
         const msg = JSON.parse(raw.toString());
         if (msg.type === 'register') {
           ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
-          ws.send(JSON.stringify({
-            type: 'notify_in',
-            sealed_box: 'dmVyeSBsb25nIGJhc2U2NCBzdHJpbmcgd2l0aCBtYW55IGNoYXJhY3RlcnM=',
-            queued_at: '2024-06-15T12:00:00.000Z',
-          }));
+          ws.send(
+            JSON.stringify({
+              type: 'notify_in',
+              sealed_box: 'dmVyeSBsb25nIGJhc2U2NCBzdHJpbmcgd2l0aCBtYW55IGNoYXJhY3RlcnM=',
+              queued_at: '2024-06-15T12:00:00.000Z',
+            }),
+          );
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
 
@@ -1107,7 +1142,10 @@ describe('Push handlers + fire-and-forget', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     assert.strictEqual(notifyEvents.length, 1, 'exactly one notify_in event');
-    assert.strictEqual(notifyEvents[0].sealed_box, 'dmVyeSBsb25nIGJhc2U2NCBzdHJpbmcgd2l0aCBtYW55IGNoYXJhY3RlcnM=');
+    assert.strictEqual(
+      notifyEvents[0].sealed_box,
+      'dmVyeSBsb25nIGJhc2U2NCBzdHJpbmcgd2l0aCBtYW55IGNoYXJhY3RlcnM=',
+    );
     assert.strictEqual(notifyEvents[0].queued_at, '2024-06-15T12:00:00.000Z');
 
     client.disconnect();
@@ -1124,20 +1162,27 @@ describe('Push handlers + fire-and-forget', () => {
           // Simulate Q-N3: server flushes queued notify_in BEFORE register_ok.
           // Per register.ts handleRegister: pending_notifications are delivered
           // before sendRegisterOk.
-          ws.send(JSON.stringify({
-            type: 'notify_in',
-            sealed_box: 'cTJucXVldWVkbm90aWZ5',
-            queued_at: '2024-01-01T00:00:00.000Z',
-          }));
-          ws.send(JSON.stringify({
-            type: 'register_ok',
-            server_id: 'test',
-            federation_size: 0,
-          }));
+          ws.send(
+            JSON.stringify({
+              type: 'notify_in',
+              sealed_box: 'cTJucXVldWVkbm90aWZ5',
+              queued_at: '2024-01-01T00:00:00.000Z',
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'register_ok',
+              server_id: 'test',
+              federation_size: 0,
+            }),
+          );
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
 
@@ -1190,13 +1235,18 @@ describe('Push handlers + fire-and-forget', () => {
         } else if (msg.type === 'lookup') {
           lookupWs = ws;
           // Do NOT respond yet — push signal_in first
-          ws.send(JSON.stringify({ type: 'signal_in', from: 'PB-PUSHER', payload: 'push-during-lookup' }));
+          ws.send(
+            JSON.stringify({ type: 'signal_in', from: 'PB-PUSHER', payload: 'push-during-lookup' }),
+          );
           // Then respond to lookup
           ws.send(JSON.stringify({ type: 'lookup_result', found: true, home: 'rdv://target' }));
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
     await client.connect();
@@ -1238,7 +1288,10 @@ describe('Push handlers + fire-and-forget', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
 
@@ -1254,7 +1307,11 @@ describe('Push handlers + fire-and-forget', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     // [choice] tolerate-and-emit: signal_in in non-ready state is emitted, not dropped
-    assert.strictEqual(signalEvents.length, 1, 'signal_in must be emitted even in registering state');
+    assert.strictEqual(
+      signalEvents.length,
+      1,
+      'signal_in must be emitted even in registering state',
+    );
     assert.strictEqual(signalEvents[0].from, 'PB-EARLY');
     assert.strictEqual(signalEvents[0].payload, 'early-signal');
 
@@ -1265,22 +1322,28 @@ describe('Push handlers + fire-and-forget', () => {
 
   it('notify_in sealed_box field round-trips intact with long base64 string', async (t) => {
     const kp = await generateKeyPair();
-    const longBase64 = 'TG9yZW0gaXBzdW0gZG9sb3Igc2l0IGFtZXQgY29uc2VjdGV0dXIgYWRpcGlzY2luZyBlbGl0IHNlZCBkbyBlaXVzbW9kIHRlbXBvciBpbmNpZGlkdW50IHV0IGxhYm9yZSBldCBkb2xvcmUgbWFnbmEgYWxpcXVhIFV0IGVuaW0gYWQgbWluaW0gdmVuaWFtIHF1aXMgbm9zdHJ1ZCBleGVyY2l0YXRpb24gdWxsYW1jbyBsYWJvcmlzIG5pc2kgdXQgYWxpcXVpcCBleCBlYSBjb21tb2RvIGNvbnNlcXVhdA==';
+    const longBase64 =
+      'TG9yZW0gaXBzdW0gZG9sb3Igc2l0IGFtZXQgY29uc2VjdGV0dXIgYWRpcGlzY2luZyBlbGl0IHNlZCBkbyBlaXVzbW9kIHRlbXBvciBpbmNpZGlkdW50IHV0IGxhYm9yZSBldCBkb2xvcmUgbWFnbmEgYWxpcXVhIFV0IGVuaW0gYWQgbWluaW0gdmVuaWFtIHF1aXMgbm9zdHJ1ZCBleGVyY2l0YXRpb24gdWxsYW1jbyBsYWJvcmlzIG5pc2kgdXQgYWxpcXVpcCBleCBlYSBjb21tb2RvIGNvbnNlcXVhdA==';
 
     const { server, url } = await createMockServer((ws) => {
       ws.on('message', (raw) => {
         const msg = JSON.parse(raw.toString());
         if (msg.type === 'register') {
           ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
-          ws.send(JSON.stringify({
-            type: 'notify_in',
-            sealed_box: longBase64,
-            queued_at: '2025-12-01T00:00:00.000Z',
-          }));
+          ws.send(
+            JSON.stringify({
+              type: 'notify_in',
+              sealed_box: longBase64,
+              queued_at: '2025-12-01T00:00:00.000Z',
+            }),
+          );
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
 
@@ -1293,7 +1356,11 @@ describe('Push handlers + fire-and-forget', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     assert.strictEqual(notifyEvents.length, 1);
-    assert.strictEqual(notifyEvents[0].sealed_box, longBase64, 'long base64 sealed_box must round-trip intact');
+    assert.strictEqual(
+      notifyEvents[0].sealed_box,
+      longBase64,
+      'long base64 sealed_box must round-trip intact',
+    );
     assert.strictEqual(notifyEvents[0].queued_at, '2025-12-01T00:00:00.000Z');
 
     client.disconnect();
@@ -1328,7 +1395,10 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
     await client.connect();
@@ -1336,8 +1406,12 @@ describe('Reconnect (D3) + Q-N4', () => {
 
     let disconnectEvent: { code: number; reason: string } | null = null;
     const reconnectEvents: Array<{ attempt: number; delayMs: number }> = [];
-    client.on('disconnect', (code, reason) => { disconnectEvent = { code, reason }; });
-    client.on('reconnect', (attempt, delayMs) => { reconnectEvents.push({ attempt, delayMs }); });
+    client.on('disconnect', (code, reason) => {
+      disconnectEvent = { code, reason };
+    });
+    client.on('reconnect', (attempt, delayMs) => {
+      reconnectEvents.push({ attempt, delayMs });
+    });
 
     // Wait for close to be processed
     await new Promise((r) => setTimeout(r, 100));
@@ -1372,7 +1446,10 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1382,7 +1459,9 @@ describe('Reconnect (D3) + Q-N4', () => {
     });
 
     const stateChanges: Array<{ from: string; to: string }> = [];
-    client.on('state_change', (from, to) => { stateChanges.push({ from, to }); });
+    client.on('state_change', (from, to) => {
+      stateChanges.push({ from, to });
+    });
 
     await client.connect();
     assert.strictEqual(client.state, 'ready');
@@ -1418,7 +1497,13 @@ describe('Reconnect (D3) + Q-N4', () => {
         if (msg.type === 'register') {
           registerCount++;
           registerPayloads.push(msg.payload as Record<string, unknown>);
-          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: registerCount }));
+          ws.send(
+            JSON.stringify({
+              type: 'register_ok',
+              server_id: 'test',
+              federation_size: registerCount,
+            }),
+          );
           // Force-close on first register only
           if (registerCount === 1) {
             setTimeout(() => ws.close(1001, 'going away'), 20);
@@ -1426,7 +1511,10 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1479,7 +1567,10 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1539,7 +1630,9 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); });
+    t.after(() => {
+      server.close();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1558,7 +1651,9 @@ describe('Reconnect (D3) + Q-N4', () => {
 
     // Wait for all reconnect attempts to complete
     let reconnectFailed = false;
-    client.once('reconnect_failed', () => { reconnectFailed = true; });
+    client.once('reconnect_failed', () => {
+      reconnectFailed = true;
+    });
     await new Promise((r) => setTimeout(r, baseDelay * (1 + 2 + 4) + 200));
 
     assert.strictEqual(reconnectEvents.length, 3, '3 reconnect events for maxAttempts=3');
@@ -1597,7 +1692,9 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); });
+    t.after(() => {
+      server.close();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1607,7 +1704,9 @@ describe('Reconnect (D3) + Q-N4', () => {
     });
 
     let reconnectFailedFired = false;
-    client.on('reconnect_failed', () => { reconnectFailedFired = true; });
+    client.on('reconnect_failed', () => {
+      reconnectFailedFired = true;
+    });
 
     await client.connect();
     assert.strictEqual(client.state, 'ready');
@@ -1640,7 +1739,10 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1689,7 +1791,10 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1702,7 +1807,9 @@ describe('Reconnect (D3) + Q-N4', () => {
     assert.strictEqual(client.state, 'ready');
 
     const reconnectEvents: Array<{ attempt: number; delayMs: number }> = [];
-    client.on('reconnect', (attempt, delayMs) => { reconnectEvents.push({ attempt, delayMs }); });
+    client.on('reconnect', (attempt, delayMs) => {
+      reconnectEvents.push({ attempt, delayMs });
+    });
 
     const disconnectEventPromise = new Promise<number>((resolve) => {
       client.once('disconnect', (code) => resolve(code));
@@ -1746,7 +1853,10 @@ describe('Reconnect (D3) + Q-N4', () => {
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,
@@ -1816,13 +1926,22 @@ describe('Reconnect (D3) + Q-N4', () => {
           } else {
             // After reconnect, push a signal_in
             setTimeout(() => {
-              ws.send(JSON.stringify({ type: 'signal_in', from: 'PB-ALICE', payload: 'post-reconnect-signal' }));
+              ws.send(
+                JSON.stringify({
+                  type: 'signal_in',
+                  from: 'PB-ALICE',
+                  payload: 'post-reconnect-signal',
+                }),
+              );
             }, 20);
           }
         }
       });
     });
-    t.after(() => { server.close(); client.disconnect(); });
+    t.after(() => {
+      server.close();
+      client.disconnect();
+    });
 
     const client = new RendezvousClient({
       keypair: kp,

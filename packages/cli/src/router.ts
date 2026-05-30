@@ -20,7 +20,9 @@ export interface ParsedArgs {
 const USAGE = `peer-bridge <command> [options]
 
 Commands:
-  init      Set up peer-bridge identity and config
+  init                  Set up peer-bridge identity and config
+  invite                Create an invite code to share with a peer
+  accept <invite-code>  Redeem an invite code and add the peer
 
 Options:
   --data-dir <path>  Override data directory
@@ -31,6 +33,8 @@ Examples:
   peer-bridge init
   peer-bridge init --data-dir ~/.peer-bridge-custom
   peer-bridge init --force
+  peer-bridge invite
+  peer-bridge accept <code>
 `;
 
 /** Parse CLI arguments into a structured form. */

@@ -7,6 +7,8 @@
 
 import { parseArgs, USAGE } from './router.js';
 import { runInit } from './commands/init.js';
+import { runInvite } from './commands/invite.js';
+import { runAccept } from './commands/accept.js';
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv);
@@ -30,6 +32,17 @@ async function main(): Promise<void> {
       result = await runInit({
         dataDir: parsed.flags.dataDir,
         force: parsed.flags.force,
+      });
+      break;
+    case 'invite':
+      result = await runInvite({
+        dataDir: parsed.flags.dataDir,
+      });
+      break;
+    case 'accept':
+      result = await runAccept({
+        code: parsed.positional[0] || '',
+        dataDir: parsed.flags.dataDir,
       });
       break;
     default:

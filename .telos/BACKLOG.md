@@ -49,7 +49,7 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 
 ## M2 启动准入（已通过；保留供历史参考）
 
-M2 启动准入条件已于 brief #1 之前满足：M1 全部关闭 + telos 17 facts + 16 decisions + 2 tensions（M2 启动时计数）+ CI matrix 6 cells（M2 内已收敛至 3 cells per `decisions/node-22-minimum.md`）。
+M2 启动准入条件已于 brief #1 之前满足：M1 全部关闭 + telos 存量足够 + CI matrix 就绪（M2 内已收敛至 3 cells per `decisions/node-22-minimum.md`）。当前 telos 计数以 `ls .telos/` 为准，不在本表重复。
 
 ## M2 in-scope（DESIGN.md §11.M2）
 

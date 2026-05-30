@@ -16,6 +16,10 @@
     "@peer-bridge/protocol": "workspace:*",
     "cbor-x": "^1.6.4",
     "libsodium-wrappers": "^0.8.4",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.0"
   }
 }

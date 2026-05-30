@@ -57,6 +57,16 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 | test vectors runner | ✅（sealed_box + fingerprint_sig + peer_id + invite + cbor） |
 | 已知测试覆盖 | known-peers (35), invite (29), crypto* (15), vectors (6) |
 
+## M2 启动准入
+
+| 准入项 | 状态 |
+|--------|------|
+| M1 全部关闭 | ✅ |
+| telos 存量 | 17 facts + 16 decisions + 2 tensions |
+| CI matrix 就绪 | ✅（6 cells，`fail-fast: false`） |
+| test vectors runner | ✅（sealed_box + fingerprint_sig + peer_id + invite + cbor） |
+| 已知测试覆盖 | known-peers (35), invite (29), crypto* (15), vectors (6) |
+
 ## M2 in-scope（DESIGN.md §11.M2）
 
 - [ ] 单 server 实现，无联邦
@@ -70,11 +80,62 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 
 | # | 未知项 | 所属 DESIGN.md § | 缺失原因 |
 |---|--------|-------------------|----------|
-| 1 | rendezvous server 的持久化模型（in-memory only? disk-backed SQLite?） | §2 架构图 + §3.5 rendezvous | DESIGN.md §2 说"离线通知暂存 (≤1KB sealed-box 密文, TTL 24h)"但未规定存储引擎；in-memory 在重启时丢通知，disk-backed 引入 schema migration 复杂度 |
+| 1 | rendezvous server 的持久化模型 | §6.1 | **已决定：in-memory only**。DESIGN.md §6.1: "运行时数据全内存，重启丢失可接受"。无需单独 telos 文件；约束已沉淀在 `facts/rendezvous-server-config.md`。可选 SQLite 仅用于持久化 federation 配置和管理员设置 |
 | 2 | sealed-box 通知队列容量上限与 TTL 清理策略 | §3.8 sealed-box-for-offline-notify | decision `sealed-box-for-offline-notify.md` 仅规定加密原语选择，未定义 per-peer 队列容量、溢出策略（drop-oldest? reject-new?）或 TTL 过期清理的触发时机（lazy-clean? cron tick?） |
 | 3 | WebSocket 信令消息的 JSON schema 与错误码枚举 | §5.1 信令格式 | DESIGN.md §5.1 给了 prose 描述 + 示例，但 M0 test vectors 未生成信令级的 (input, output) 向量；M2 实现需要 validate 字段齐全、错误码枚举不漂移 |
 | 4 | rendezvous 的速率限制与 DoS 防御姿态 | §12.5 "rendezvous 对单 IP 的 invite/lookup 速率限制" | §12.5 只说"必须做"但未给出具体阈值、窗口算法、驳回响应码；是 prose 约束不是可测 spec |
 | 5 | 联邦协议的 hook 预留（M6 才实现但 M2 信令格式不能 foreclose） | §3.5 rendezvous-federation-not-turn | decision `rendezvous-federation-not-turn.md` 记录了 JSON-RPC 联邦的 strategy 选择，但 M2 单-server 的 WebSocket 消息是否携带 `federation_id` / `origin_server` 字段作为 forward-compat 占位，目前未决策 |
+
+## M2 agent-blind 检查结果
+
+**Date**: 2026-05-30 | **Protocol**: `decisions/agent-blind-check-protocol.md`  | **Source diff**: `m2-blind-design.md` vs `m2-design-diff.md`
+
+### 总览
+
+18 declared gaps (G-1..G-18) classified against DESIGN.md:
+
+| Classification | Count | Gaps |
+|---|---|---|
+| Resolved-in-DESIGN（blind-correct） | 2 | G-1 (in-memory persistence), G-13 (sealed-box encryption) |
+| Resolved-in-DESIGN（blind-wrong） | 3 | G-10 (known-peers schema), G-16 (CLI→daemon path), G-18 (Fastify vs raw http) |
+| Partially-resolved | 8 | G-2, G-5, G-6, G-8, G-9, G-14, G-15, G-17 |
+| Genuinely-undecided | 5 | G-3, G-4, G-7, G-11, G-12 |
+
+### 14 telos coverage findings (T-1..T-14)
+
+**Resolved this turn — new telos files backfilled**:
+
+| # | Finding | Resolution | File |
+|---|---|---|---|
+| T-1 | known-peers TOML schema wrong in blind report | fact created | `facts/known-peers-toml-schema.md` |
+| T-2 | Missing fingerprint confirmation during accept | decision created | `decisions/manual-fingerprint-confirmation-on-accept.md` |
+| T-3 | Rendezvous framework: Fastify not raw http | fact created | `facts/rendezvous-tech-stack.md` |
+| T-5 | server.toml config format not addressed | fact created | `facts/rendezvous-server-config.md` |
+| T-6 | register_ok field drift (origin_server) | fact created | `facts/signaling-message-fields.md` |
+| T-14 | M2 CLI bypasses daemon (M4-revert) | decision created | `decisions/m2-cli-bypasses-daemon.md` |
+
+**T-4 (health check response fields)**: partially resolved — `facts/rendezvous-server-config.md` covers server config surface; health check field spec lives in DESIGN.md §6.1 and protocol.md Server Limits. Not yet a separate telos fact (lower priority than block-M2-start items).
+
+**Remaining — genuinely undecided (T-7..T-13)**:
+
+| # | Item | Status |
+|---|---|---|
+| T-7 | Per-peer notification queue capacity + overflow strategy | block-M2-exit — DESIGN.md silent. Needs decision file |
+| T-8 | Notification queue TTL cleanup schedule | block-M2-exit — DESIGN.md silent. Needs decision file |
+| T-9 | Rendezvous WebSocket keepalive (ping/pong intervals) | cross-slice — affects M4 daemon too |
+| T-10 | Register deduplication strategy | block-M2-exit — DESIGN.md silent |
+| T-12 | Per-IP rate limiting thresholds beyond invite_create | block-M2-exit — DESIGN.md says "必须做" but doesn't enumerate |
+| T-13 | Error response format beyond invite_result | block-M2-exit — partially in §5.1, not exhaustive |
+
+**T-11 (WebSocket close reason codes)**: cross-slice, low priority — can be decided during implementation.
+
+### 3 outright errors caught
+
+1. **known-peers schema**: blind used `[[peers]]` (plural), `name` (not `alias`), `trust = "trusted"` (not enum). → `facts/known-peers-toml-schema.md`
+2. **Fastify**: blind chose raw Node.js `http`. DESIGN.md §6.1 requires Fastify + ws. → `facts/rendezvous-tech-stack.md`
+3. **Fingerprint confirmation**: blind auto-adds without prompt. DESIGN.md §3.6 + §12 require manual confirmation. → `decisions/manual-fingerprint-confirmation-on-accept.md`
+
+---
 
 ## 其他 BACKLOG（不阻塞 M2）
 

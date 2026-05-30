@@ -45,6 +45,8 @@ export const MSG_TYPES = {
   ROOM_FILE_CHUNK: 'room:file_chunk',
   ROOM_FILE_DONE: 'room:file_done',
   ROOM_FILE_ABORT: 'room:file_abort',
+  // resync + v2 room management types: M4 (daemon) and future.
+  // Re-introduce with unique CBOR keys per fact cbor-key-allocation.md.
   ROOM_RESYNC_REQUEST: 'room:resync_request',
   ROOM_RESYNC_RESPONSE: 'room:resync_response',
   // Second-version room management (defined but not exposed in v1)

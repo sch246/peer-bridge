@@ -351,20 +351,20 @@ Frame:
 
 ### room:hello
 
-连接建立后首条消息。
+连接建立后首条消息。（CBOR keys 参见 [Appendix B](#appendix-b-cbor-integer-keys)）
 
 | 字段         | CBOR key | 类型 | 说明           |
 | ------------ | -------- | ---- | -------------- |
 | type         | 0        | tstr | `"room:hello"` |
-| version      | 1        | tstr | `"0.1.0"`      |
-| capabilities | 2        | map  | 可选能力       |
+| version      | 8        | tstr | `"0.1.0"`      |
+| capabilities | 9        | map  | 可选能力       |
 | ts           | 99       | uint | 时间戳         |
 
 ```cbor
 {
   0: "room:hello",
-  1: "0.1.0",
-  2: {"webrtc": true},
+  8: "0.1.0",
+  9: {"webrtc": true},
   99: 1736937600000
 }
 ```
@@ -416,26 +416,26 @@ Frame:
 | -------------- | -------- | -------------------------- | ---- |
 | type           | 0        | tstr = `"room:file_offer"` | ✓    |
 | room_id        | 1        | bstr (16)                  | ✓    |
-| file_id        | 2        | tstr (UUID)                | ✓    |
-| sender_peer_id | 3        | bstr (32)                  | ✓    |
-| name           | 4        | tstr                       | ✓    |
-| size           | 5        | uint                       | ✓    |
+| file_id        | 10       | tstr (UUID)                | ✓    |
+| sender_peer_id | 2        | bstr (32)                  | ✓    |
+| name           | 11       | tstr                       | ✓    |
+| size           | 12       | uint                       | ✓    |
 | sha256         | 6        | bstr (32)                  | ✓    |
 | note           | 7        | tstr                       | -    |
-| seq            | 8        | uint                       | ✓    |
+| seq            | 5        | uint                       | ✓    |
 | ts             | 99       | uint                       | ✓    |
 
 ```cbor
 {
   0: "room:file_offer",
   1: h'...',
-  2: "550e8400-e29b-41d4-a716-446655440000",
-  3: h'...',
-  4: "report.pdf",
-  5: 1048576,
+  10: "550e8400-e29b-41d4-a716-446655440000",
+  2: h'...',
+  11: "report.pdf",
+  12: 1048576,
   6: h'deadbeef...',
   7: "季度分析报告",
-  8: 8,
+  5: 8,
   99: 1736937600000
 }
 ```
@@ -446,8 +446,8 @@ Frame:
 | ------- | -------- | --------- | --------- |
 | type    | 0        | tstr      | ✓         |
 | room_id | 1        | bstr (16) | ✓         |
-| file_id | 2        | tstr      | ✓         |
-| reason  | 3        | tstr      | reject 时 |
+| file_id | 10       | tstr      | ✓         |
+| reason  | 14       | tstr      | reject 时 |
 | ts      | 99       | uint      | ✓         |
 
 ### room:file_chunk
@@ -457,17 +457,17 @@ Frame:
 | 字段    | CBOR key | 类型                       |
 | ------- | -------- | -------------------------- |
 | type    | 0        | tstr = `"room:file_chunk"` |
-| file_id | 1        | tstr                       |
-| seq_num | 2        | uint (0-indexed)           |
-| data    | 3        | bstr (≤65536 bytes)        |
+| file_id | 10       | tstr                       |
+| seq_num | 5        | uint (0-indexed)           |
+| data    | 13       | bstr (≤65536 bytes)        |
 
 ### room:file_done / room:file_abort
 
 | 字段    | CBOR key | 类型            |
 | ------- | -------- | --------------- |
 | type    | 0        | tstr            |
-| file_id | 1        | tstr            |
-| reason  | 2        | tstr (abort 时) |
+| file_id | 10       | tstr            |
+| reason  | 14       | tstr (abort 时) |
 | ts      | 99       | uint            |
 
 ### room:resync_request / room:resync_response

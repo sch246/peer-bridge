@@ -35,7 +35,7 @@
 
 ## 为什么是 fact 不是 decision
 
-这是一个 invariant——没有 alternatives。允许 key 共享的 decision 已经被否决（见 `decisions/unique-cbor-keys-not-message-scoped.md`），本文档把否决后的状态钉成永久约束。
+这是一个 invariant——没有 alternatives。CBOR RFC 8949 §3.1 不强制 map key 唯一性，JavaScript 对象字面量 `{1: 'a', 1: 'b'}` 中后者静默覆盖前者不报错。commit `2412765` 之前的 `messageToCBORMap` 在 `room:file_offer` 里同时使用两组共享 key，wire 上静默 corrupt——该 bug 由 reviewer report `chain-runs/4f6c4fb6/reviewer.md` F1 发现。本文档把纠正后的唯一-key 状态钉成永久约束。
 
 ## 来源
 

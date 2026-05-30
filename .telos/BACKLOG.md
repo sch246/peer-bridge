@@ -187,13 +187,17 @@ Scope ledger（详 audit §B，12 项明确不在 M3）作为隐性 scope creep 
 
 ### Post-M3 BACKLOG（sediment plan §C 出）
 
-Verbatim from `.telos/audit-trails/m3-startup-sediment-plan-2026-05-30.md` §C（原文 C-1..C-5）。Recovery commit `74f8038` 从 commit `beb436b` 的压缩版反转。
-
 - **MC-1** M4 transcripts 与 M3 CLI 文件格式兼容（U-15）— M3 CLI 无 daemon 无 transcript.jsonl。如果 M3 CLI 把文件存在 `~/Downloads/` 不写 transcript，M4 daemon 启动时如何发现和承认这些文件？需在 M4 实施时设计迁移路径。Revisit M4。
 - **MC-2** known_peers `trust:tofu` 在 P2P 连接时的 CLI 行为（D-12）— `facts/known-peers-toml-schema.md` 定义 trust: "tofu"，但 M3 P2P 连接时对 tofu peer 的行为未定义（是否允许 DataChannel 建立？CLI 警告程度？）。Daemon 阶段 (M4) 的长期 tofu 策略应统一。Cross-link: 与 `manual-fingerprint-confirmation-on-accept.md` 的 "manual confirm" 严格度有 tension。Revisit M4。
 - **MC-3** bulk channel 创建失败 → 退化为纯消息连接的正式策略（D-8）— Blind 选了 graceful degradation，但这是 telos 盲区。M4 引入 daemon 后可能有不同的连接降级策略（如自动重试 bulk channel）。Revisit M4。
 - **MC-4** DataChannel 同 PC 内重开 vs 完全重建 PeerConnection 的策略（I-8 + U-13）— Blind 选了 "同 PC 内重开 DataChannel + 文件从头重传"，但 telos 未沉积。与 U-13 (PeerConnection 重连) 关联 — M4 可能需要更完整的重连策略（含 ICE restart）。Revisit M4。
 - **MC-5** 无应用层 chunk 重传/ACK — 依赖 SCTP 可靠传输（D-10）— Blind 确认不做 chunk ACK，但 SCTP 的可靠传输在极端网络条件下（packet loss > 30%）可能有 tail latency 问题。如未来性能问题浮现，此决策需要重访。Revisit M4（性能数据积累后）。
+
+> Origin annotation: verbatim from `.telos/audit-trails/m3-startup-sediment-plan-2026-05-30.md` §C (原文 C-1..C-5). Recovery commit `74f8038` from compressed-from-memory predecessor `beb436b`.
+
+### Audit trail housekeeping (M4 startup)
+
+- **MC-6** `.telos/audit-trails/README.md` — 补一份简要说明：这些是 brief sequence 留下的 traceable graph，从 commit hash 可反向找到设计源头。Audience 在 M4+ 启动时出现 (audit/blind/sediment plan 贯穿多 milestone)。Revisit M4 启动前。
 
 ## 下阶段
 

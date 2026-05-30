@@ -168,18 +168,30 @@ M3 sanity probe 过（commit `7f2e7ac`）：`node-datachannel@0.32.3` 三平台 
 
 M3 启动 audit 进行中：`.telos/audit-trails/m3-startup-audit-2026-05-30.md`。Audit 结论是 **M3 不可直接启动，必须先 sediment 6 个 block-M3-start telos 项**（§C.1）：
 
-- [ ] **U-1**: `decisions/m3-cli-p2p-bypass-daemon.md` — M3 CLI 绕过 daemon 的 P2P 接入路径
-- [ ] **U-2**: `decisions/datachannel-negotiation-two-channels.md` — control + bulk 双通道协商方式
-- [ ] **U-3**: `facts/default-ice-servers.md` — 默认 STUN 服务器列表 + privacy 声明
-- [ ] **U-4**: `facts/peerconnection-lifecycle.md` — PeerConnection 建立/关闭/忽略超时触发
-- [ ] **U-5+U-6**: `decisions/datachannel-error-protocol.md` — fingerprint verify / capabilities / DataChannel open 超时等错误路径。含 `room:hello` 版本不匹配行为
-- [ ] **U-7**: `facts/p2p-signal-payload-format.md` — `signal.payload` 内容 JSON sub-envelope（webrtc_offer/webrtc_answer/ice_candidate）
+- [x] **U-1**: `decisions/m3-cli-p2p-bypass-daemon.md` — M3 CLI 绕过 daemon 的 P2P 接入路径（commit `14c2e62`）
+- [x] **U-2**: `decisions/datachannel-negotiation-two-channels.md` — control + bulk 双通道协商方式（commit `0ec442b`）
+- [x] **U-3**: `facts/default-ice-servers.md` — 默认 STUN 服务器列表 + privacy 声明（commit `d862be4`）
+- [x] **U-4**: `facts/peerconnection-lifecycle.md` — PeerConnection 建立/关闭/忽略超时触发（commit `14c2e62`）
+- [x] **U-5+U-6**: `decisions/datachannel-error-protocol.md` — fingerprint verify / capabilities / DataChannel open 超时等错误路径。含 `room:hello` 版本不匹配行为（commit `d862be4`）
+- [x] **U-7**: `facts/p2p-signal-payload-format.md` — `signal.payload` 内容 JSON sub-envelope（webrtc_offer/webrtc_answer/ice_candidate）（commit `0ec442b`）
 
 另有 5 个 block-M3-exit 项（U-8 · bulk 流控阈值 / U-9 · 进度上报频率 / U-10 · SHA-256 校验时机 / U-11 · CLI recv 模式 / U-12 · P2P 错误码 taxonomy）及 3 个 cross-slice 项（U-13 · DataChannel 重连 / U-14 · capabilities 枚举 / U-15 · M3 文件与 M4 transcript 兼容）可边实施边沉淀。
 
 Scope ledger（详 audit §B，12 项明确不在 M3）作为隐性 scope creep 护栏：文件断点续传 / SQLite room state / daemon + IPC / 通知 hook / 离线暂存拉取 / 多人房间 / resync / 联邦 / pi extension / ICE restart / 预览缩略图 / 群组加密 forward secrecy。
 
 下一步：pre-impl agent-blind check（闭卷 M3 设计 vs telos）→ diff vs audit → 合并后一次性 sediment。
+
+### M3 启动 sediment 完结
+
+6 个 block-M3-start telos 文件全部落地 (Phases 1–4，commit `2b49c4d` → `14c2e62` → `0ec442b` → `d862be4`)。C-1 真矛盾在 Phase 1 以 amend `per-sender-seq-numbering.md` + `docs/protocol.md` §5 关闭。264/264 测试全绿。**M3 可启动实施。**
+
+### Post-M3 BACKLOG（sediment plan §C 出）
+
+- **MC-1** M4 transcripts 与 M3 CLI 文件格式兼容（U-15）— M3 CLI 无 daemon 不写 transcript.jsonl，M4 daemon 启动时如何发现和承认 M3 落盘文件。Revisit M4。
+- **MC-2** known_peers `trust:tofu` 在 P2P 连接时的 CLI 行为与 `manual-fingerprint-confirmation-on-accept` tension 统一（D-12）— 在 M4 daemon 阶段与长期 tofu 策略一起决。Revisit M4。
+- **MC-3** bulk channel 创建失败 → 退化为纯消息连接的正式策略（D-8）— M3 选 graceful degrade，M4 引入 daemon 后可能需重试 bulk channel 。Revisit M4。
+- **MC-4** DataChannel 同 PC 内重开 vs 完全重建 PeerConnection 的策略（I-8 + U-13）— M3 选重建 + 从头重传，M4 可能有更完整的重连策略含 ICE restart。Revisit M4。
+- **MC-5** 无应用层 chunk 重传/ACK — 依赖 SCTP 可靠传输（D-10）— 极端网络条件下可能有 tail latency。Revisit M4（性能数据积累后）。
 
 ## 下阶段
 

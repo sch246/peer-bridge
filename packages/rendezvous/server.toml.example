@@ -1,0 +1,19 @@
+# Sample rendezvous server configuration
+# Copy to server.toml and adjust for your deployment.
+
+[server]
+listen = "0.0.0.0:9372"
+public_url = "ws://localhost:9372"
+# identity_key is optional in M2 (used in M6 federation)
+# identity_key = "/etc/peer-bridge/server.key"
+
+[limits]
+max_peers = 10000
+max_invites_per_ip_per_hour = 20
+max_offline_notify_size = 1024
+offline_notify_ttl_hours = 24
+
+# Federation peers (M6 feature — empty in M2)
+# [[federation]]
+# url = "wss://rdv.friend.example.com"
+# pubkey = "ed25519:..."

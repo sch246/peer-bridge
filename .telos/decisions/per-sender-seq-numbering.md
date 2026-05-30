@@ -34,7 +34,13 @@
 
 `seq` 是 **per-(sender, room)** 单调递增整数，从 0 开始。
 
-**类型间共享**：`room:msg`、`room:file_offer`、`room:system` 等所有 `room:*` 消息类型共享同一个 seq 空间。例如 sender 发了 3 条 `room:msg`（seq 0-2），再发 1 条 `room:file_offer`，该 file_offer 的 seq = 3。这使得接收方可以用单一 seq 判断丢消息，不需要区分消息类型。
+**seq 适用范围**：seq 仅适用于 **sender-generated application messages**（由发送方生成、参与 per-sender transcript 排序的消息）。按消息类别分为：
+
+- **共享 seq**（sender-generated application messages，参与 transcript 排序）：`room:msg`、`room:file_offer`、`room:file_done`、`room:file_abort`。这些消息由发送方生成，在接收方按 `(sender_peer_id, seq)` 排序，共用同一个单调递增的 seq 空间。例如 sender 发了 3 条 `room:msg`（seq 0-2），再发 1 条 `room:file_offer`（seq = 3），然后 `room:file_done`（seq = 4）。
+- **不共享 seq**（receiver-generated one-shot acks）：`room:file_accept`、`room:file_reject`。这些是接收方对 file_offer 的单次响应，不参与 sender 的 seq 序列。
+- **不共享 seq**（protocol management）：`room:hello`、`room:ping`、`room:pong`。这些是协议管理层消息，不进 transcript，不参与 seq。
+- **不共享 seq**（bulk channel chunk）：`room:file_chunk` 使用自己的 `seq_num`（per-file、0-indexed），不参与 sender 的 room-level seq。
+- **未实现**：`room:resync_request`、`room:resync_response`、`room:invite`、`room:join`、`room:leave` 不在 M1 `RoomMessage` union 中，回引时遵循其原 milestone 的设计；按需 amend。
 
 **跨连接持久**：seq 在 daemon 重启后不重置。发送方从本地 room 的 `MAX(seq) + 1` 继续（从 transcript 或 room_messages 恢复）；接收方启动时从 transcript 重建每个 sender 的 `last_seen_seq`。seq 不因 WebRTC 断开/重连而重置为零 — 这是一个持久化计数器，不是会话内计数器。
 

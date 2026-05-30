@@ -469,9 +469,13 @@ Frame:
 | 字段    | CBOR key | 类型            |
 | ------- | -------- | --------------- |
 | type    | 0        | tstr            |
+| seq     | 5        | uint            |
 | file_id | 10       | tstr            |
 | reason  | 14       | tstr (abort 时) |
 | ts      | 99       | uint            |
+
+> `seq` 为 sender-generated，与 `room:msg`/`room:file_offer` 的 `seq` 语义一致：per-sender, per-room 单调递增。
+> `room:file_done` / `room:file_abort` 在 transcript 中按 `seq` 排序。
 
 ### room:resync_request / room:resync_response
 

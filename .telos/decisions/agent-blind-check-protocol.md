@@ -89,6 +89,7 @@ M0 阶段要求执行 agent-blind 检查：给 clean agent 仅 `.telos/` 和 `do
 Agent-blind 检查抳不到一类 bug：**telos 未规定、但实现中会却不得不面对的工程决定**。
 
 具体例子（commit `2412765`）：protocol.md 列了字段名但没钉死 CBOR integer key 分配，实现者选了“按 message type 复用 key”，造成 `room:file_offer` wire 静默 corrupt。
+
 - agent-blind 抳不到：subagent 会同样选复用（telos 没说不该复用）
 - drift-check 抳不到：code 严格匹配 telos 详细度
 - 只有 implementation review（在 frame.ts 看到同一 map 下两个字段用同 key）才能发现

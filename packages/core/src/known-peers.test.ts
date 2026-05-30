@@ -3,7 +3,14 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, existsSync, readFileSync, unlinkSync, rmdirSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  existsSync,
+  readFileSync,
+  unlinkSync,
+  rmdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -156,7 +163,8 @@ describe('parseKnownPeers', () => {
   });
 
   it('ignores lines without equals sign inside a peer block', () => {
-    const input = '[[peer]]\nalias = "x"\npeer_id = "PB-X"\nhome_rendezvous = "wss://x"\nsome junk line\n';
+    const input =
+      '[[peer]]\nalias = "x"\npeer_id = "PB-X"\nhome_rendezvous = "wss://x"\nsome junk line\n';
     const peers = parseKnownPeers(input);
     assert.strictEqual(peers.length, 1);
     assert.strictEqual(peers[0].alias, 'x');
@@ -164,7 +172,8 @@ describe('parseKnownPeers', () => {
 
   it('handles single-quoted values', () => {
     // The parser strips both kinds of quotes
-    const input = "[[peer]]\nalias = 'carla'\npeer_id = 'PB-C'\nhome_rendezvous = 'wss://c.example.com'";
+    const input =
+      "[[peer]]\nalias = 'carla'\npeer_id = 'PB-C'\nhome_rendezvous = 'wss://c.example.com'";
     const peers = parseKnownPeers(input);
     assert.strictEqual(peers[0].alias, 'carla');
     assert.strictEqual(peers[0].peer_id, 'PB-C');

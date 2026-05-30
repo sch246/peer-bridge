@@ -16,15 +16,8 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  ed25519ToX25519,
-  sealOpen,
-} from './sealed-box.js';
-import {
-  buildFingerprintPayload,
-  signFingerprint,
-  verifyFingerprint,
-} from './fingerprint.js';
+import { ed25519ToX25519, sealOpen } from './sealed-box.js';
+import { buildFingerprintPayload, signFingerprint, verifyFingerprint } from './fingerprint.js';
 import type { SignKeyPair } from './identity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,7 +36,9 @@ const hexToBytes = (hex: string): Uint8Array => {
 };
 
 const bytesToHex = (b: Uint8Array): string =>
-  Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+  Array.from(b)
+    .map((x) => x.toString(16).padStart(2, '0'))
+    .join('');
 
 // ── Sealed box vectors ──
 
@@ -100,10 +95,7 @@ describe('Sealed box vectors (decrypt path, byte-deterministic)', () => {
       assert.ok(decrypted !== null, 'sealed box decrypt must succeed');
 
       if (v.expected.decrypted_utf8 !== undefined) {
-        assert.strictEqual(
-          Buffer.from(decrypted!).toString('utf-8'),
-          v.expected.decrypted_utf8,
-        );
+        assert.strictEqual(Buffer.from(decrypted!).toString('utf-8'), v.expected.decrypted_utf8);
       }
       if (v.expected.decrypted_length !== undefined) {
         assert.strictEqual(decrypted!.length, v.expected.decrypted_length);
@@ -112,7 +104,9 @@ describe('Sealed box vectors (decrypt path, byte-deterministic)', () => {
         // All bytes equal this value
         for (let i = 0; i < decrypted!.length; i++) {
           if (decrypted![i] !== v.expected.decrypted_byte) {
-            assert.fail(`byte ${i} = 0x${decrypted![i].toString(16)}, expected 0x${v.expected.decrypted_byte.toString(16)}`);
+            assert.fail(
+              `byte ${i} = 0x${decrypted![i].toString(16)}, expected 0x${v.expected.decrypted_byte.toString(16)}`,
+            );
           }
         }
       }

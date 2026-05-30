@@ -40,5 +40,8 @@ known_peers.toml
 .pi-lens/
 **/.pi-lens/
 
+# Working drafts (agent-blind reports, backfill plans — repo root only)
+/m2-*.md
+
 # Windows artifacts (bash redirect bug)
 nul

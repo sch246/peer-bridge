@@ -1,10 +1,19 @@
 // Identity management: Ed25519 keypair generation, peer ID computation.
 // Each node generates an independent Ed25519 long-term key stored in <data_dir>/identity.key.
+// Uses libsodium-wrappers for all cryptographic operations.
 
-import nacl from 'tweetnacl';
+import sodium from 'libsodium-wrappers';
 import { encodePeerId } from '@peer-bridge/protocol';
 
-// tweetnacl keypair types (the runtime nacl object provides these via nacl.sign.keyPair())
+let ready = false;
+
+async function ensureReady(): Promise<void> {
+  if (!ready) {
+    await sodium.ready;
+    ready = true;
+  }
+}
+
 export interface SignKeyPair {
   publicKey: Uint8Array;
   secretKey: Uint8Array;
@@ -12,9 +21,12 @@ export interface SignKeyPair {
 
 /**
  * Generate a new Ed25519 keypair.
+ * Must be called after sodium.ready (first call auto-initializes).
  */
-export function generateKeyPair(): SignKeyPair {
-  return (nacl as any).sign.keyPair() as SignKeyPair;
+export async function generateKeyPair(): Promise<SignKeyPair> {
+  await ensureReady();
+  const kp = sodium.crypto_sign_keypair();
+  return { publicKey: kp.publicKey, secretKey: kp.privateKey };
 }
 
 /**
@@ -108,17 +120,19 @@ export function getPeerId(publicKey: Uint8Array): string {
 /**
  * Sign a message with the Ed25519 secret key.
  */
-export function sign(message: Uint8Array, secretKey: Uint8Array): Uint8Array {
-  return (nacl as any).sign.detached(message, secretKey) as Uint8Array;
+export async function sign(message: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array> {
+  await ensureReady();
+  return sodium.crypto_sign_detached(message, secretKey);
 }
 
 /**
  * Verify an Ed25519 signature.
  */
-export function verify(
+export async function verify(
   message: Uint8Array,
   signature: Uint8Array,
   publicKey: Uint8Array,
-): boolean {
-  return (nacl as any).sign.detached.verify(message, signature, publicKey) as boolean;
+): Promise<boolean> {
+  await ensureReady();
+  return sodium.crypto_sign_verify_detached(signature, message, publicKey);
 }

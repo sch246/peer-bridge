@@ -1,9 +1,18 @@
 // NaCl sealed box encryption for offline notification payloads.
-// Uses NaCl sealed box (anonymous public-key encryption).
+// Uses libsodium-wrappers (crypto_box_seal / crypto_box_seal_open).
 // Spec: protocol.md §9, fact nacl-sealed-box-properties.md
 
-import nacl from 'tweetnacl';
+import sodium from 'libsodium-wrappers';
 import type { SignKeyPair } from './identity.js';
+
+let ready = false;
+
+async function ensureReady(): Promise<void> {
+  if (!ready) {
+    await sodium.ready;
+    ready = true;
+  }
+}
 
 export interface BoxKeyPair {
   publicKey: Uint8Array;
@@ -12,13 +21,14 @@ export interface BoxKeyPair {
 
 /**
  * Convert an Ed25519 keypair to an X25519 keypair for sealed box operations.
- * Uses tweetnacl's built-in conversion functions.
+ * Uses libsodium crypto_sign_ed25519_*_to_curve25519.
  * Spec: fact ed25519-x25519-conversion.md
  */
-export function ed25519ToX25519(keyPair: SignKeyPair): BoxKeyPair {
+export async function ed25519ToX25519(keyPair: SignKeyPair): Promise<BoxKeyPair> {
+  await ensureReady();
   return {
-    publicKey: (nacl as any).sign.publicKey_to_curve25519(keyPair.publicKey) as Uint8Array,
-    secretKey: (nacl as any).sign.secretKey_to_curve25519(keyPair.secretKey) as Uint8Array,
+    publicKey: sodium.crypto_sign_ed25519_pk_to_curve25519(keyPair.publicKey),
+    secretKey: sodium.crypto_sign_ed25519_sk_to_curve25519(keyPair.secretKey),
   };
 }
 
@@ -30,8 +40,12 @@ export function ed25519ToX25519(keyPair: SignKeyPair): BoxKeyPair {
  * @param recipientX25519PublicKey - The recipient's X25519 public key (32 bytes)
  * @returns The sealed box ciphertext (payload.length + 48 bytes overhead)
  */
-export function seal(payload: Uint8Array, recipientX25519PublicKey: Uint8Array): Uint8Array {
-  return (nacl as any).box.seal(payload, recipientX25519PublicKey) as Uint8Array;
+export async function seal(
+  payload: Uint8Array,
+  recipientX25519PublicKey: Uint8Array,
+): Promise<Uint8Array> {
+  await ensureReady();
+  return sodium.crypto_box_seal(payload, recipientX25519PublicKey);
 }
 
 /**
@@ -42,16 +56,17 @@ export function seal(payload: Uint8Array, recipientX25519PublicKey: Uint8Array):
  * @param recipientX25519SecretKey - The recipient's X25519 secret key (32 bytes)
  * @returns The decrypted plaintext, or null if decryption/MAC verification fails
  */
-export function sealOpen(
+export async function sealOpen(
   sealed: Uint8Array,
   recipientX25519PublicKey: Uint8Array,
   recipientX25519SecretKey: Uint8Array,
-): Uint8Array | null {
-  return (nacl as any).box.seal.open(
-    sealed,
-    recipientX25519PublicKey,
-    recipientX25519SecretKey,
-  ) as Uint8Array | null;
+): Promise<Uint8Array | null> {
+  await ensureReady();
+  try {
+    return sodium.crypto_box_seal_open(sealed, recipientX25519PublicKey, recipientX25519SecretKey);
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -35,3 +35,9 @@ coverage/
 identity.key
 identity.pub
 known_peers.toml
+
+# pi-lens local cache
+.pi-lens/cache/
+
+# Windows artifacts (bash redirect bug)
+nul

@@ -132,9 +132,7 @@ export function decodeFrame(frame: Uint8Array): RoomMessage {
   const payloadLength = view.getUint32(0, false);
 
   if (frame.length < 4 + payloadLength) {
-    throw new Error(
-      `Frame too short: expected ${4 + payloadLength} bytes, got ${frame.length}`,
-    );
+    throw new Error(`Frame too short: expected ${4 + payloadLength} bytes, got ${frame.length}`);
   }
 
   const payload = frame.slice(4, 4 + payloadLength);

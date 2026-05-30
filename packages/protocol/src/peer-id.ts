@@ -139,7 +139,9 @@ export function decodePeerId(peerId: string): Uint8Array {
   stripped = stripped.replace(/-/g, '').toUpperCase();
 
   if (stripped.length !== 53) {
-    throw new Error(`Invalid peer ID: expected 53 base32 chars after stripping, got ${stripped.length}`);
+    throw new Error(
+      `Invalid peer ID: expected 53 base32 chars after stripping, got ${stripped.length}`,
+    );
   }
 
   // Verify checksum

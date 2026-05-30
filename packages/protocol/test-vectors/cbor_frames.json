@@ -4,7 +4,12 @@
   "vectors": [
     {
       "name": "room:hello (minimal)",
-      "input": { "type": "room:hello", "version": "0.1.0", "capabilities": {}, "ts": 1736937600000 },
+      "input": {
+        "type": "room:hello",
+        "version": "0.1.0",
+        "capabilities": {},
+        "ts": 1736937600000
+      },
       "expected": {
         "frame_hex": "00000029b9000461306a726f6f6d3a68656c6c6f613165302e312e306132b90000623939fb42794698c7400000"
       }
@@ -18,7 +23,12 @@
     },
     {
       "name": "room:file_chunk (bulk channel)",
-      "input": { "type": "room:file_chunk", "file_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "seq_num": 42, "data": "000102030405060708090a0b0c0d0e0f10" },
+      "input": {
+        "type": "room:file_chunk",
+        "file_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "seq_num": 42,
+        "data": "000102030405060708090a0b0c0d0e0f10"
+      },
       "expected": {
         "frame_hex": "00000057b9000461306f726f6f6d3a66696c655f6368756e6b6132782461316232633364342d653566362d373839302d616263642d6566313233343536373839306133d84051000102030405060708090a0b0c0d0e0f106135182a"
       }

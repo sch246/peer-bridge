@@ -1,8 +1,18 @@
 // DTLS fingerprint signing for WebRTC P2P handshake authentication.
 // Spec: protocol.md §3 (P2P handshake), §9 (encryption details)
+// Uses libsodium-wrappers for Ed25519 signing (not tweetnacl).
 
-import nacl from 'tweetnacl';
+import sodium from 'libsodium-wrappers';
 import { createHash } from 'node:crypto';
+
+let ready = false;
+
+async function ensureReady(): Promise<void> {
+  if (!ready) {
+    await sodium.ready;
+    ready = true;
+  }
+}
 
 /**
  * Build the signed payload for DTLS fingerprint verification.
@@ -44,15 +54,16 @@ export function buildFingerprintPayload(
  * Sign a fingerprint payload with an Ed25519 secret key.
  * Returns 64-byte Ed25519 signature.
  */
-export function signFingerprint(
+export async function signFingerprint(
   fingerprintBytes: Uint8Array,
   peerIdBytes: Uint8Array,
   timestamp: number,
   nonce: Uint8Array,
   secretKey: Uint8Array,
-): Uint8Array {
+): Promise<Uint8Array> {
+  await ensureReady();
   const payload = buildFingerprintPayload(fingerprintBytes, peerIdBytes, timestamp, nonce);
-  return (nacl as any).sign.detached(payload, secretKey) as Uint8Array;
+  return sodium.crypto_sign_detached(payload, secretKey);
 }
 
 /**
@@ -60,16 +71,17 @@ export function signFingerprint(
  *
  * @returns true if the signature is valid
  */
-export function verifyFingerprint(
+export async function verifyFingerprint(
   fingerprintBytes: Uint8Array,
   peerIdBytes: Uint8Array,
   timestamp: number,
   nonce: Uint8Array,
   signature: Uint8Array,
   publicKey: Uint8Array,
-): boolean {
+): Promise<boolean> {
+  await ensureReady();
   const payload = buildFingerprintPayload(fingerprintBytes, peerIdBytes, timestamp, nonce);
-  return (nacl as any).sign.detached.verify(payload, signature, publicKey) as boolean;
+  return sodium.crypto_sign_verify_detached(signature, payload, publicKey);
 }
 
 /**

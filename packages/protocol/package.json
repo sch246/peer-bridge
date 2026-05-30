@@ -15,5 +15,8 @@
   },
   "dependencies": {
     "cbor-x": "^1.6.4"
+  },
+  "devDependencies": {
+    "libsodium-wrappers": "^0.8.4"
   }
 }

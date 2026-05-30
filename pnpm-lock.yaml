@@ -59,6 +59,10 @@ importers:
       cbor-x:
         specifier: ^1.6.4
         version: 1.6.4
+    devDependencies:
+      libsodium-wrappers:
+        specifier: ^0.8.4
+        version: 0.8.4
 
   packages/rendezvous:
     dependencies:

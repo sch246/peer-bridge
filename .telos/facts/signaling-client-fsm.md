@@ -13,34 +13,40 @@ since: 2026-05-30
 
 ### States
 
-| State            | Meaning                                                   |
-| ---------------- | --------------------------------------------------------- |
+| State            | Meaning                                                                        |
+| ---------------- | ------------------------------------------------------------------------------ |
 | `'disconnected'` | No connection. Initial state and terminal state after explicit `disconnect()`. |
-| `'connecting'`   | WebSocket opening, TCP+TLS handshake in progress.         |
-| `'registering'`  | WebSocket open, `register` frame sent, awaiting `register_ok`. |
-| `'ready'`        | Fully connected and registered. Can send/receive signaling messages. |
-| `'reconnecting'` | Involuntary close from `'ready'` state. Backoff timer running. |
+| `'connecting'`   | WebSocket opening, TCP+TLS handshake in progress.                              |
+| `'registering'`  | WebSocket open, `register` frame sent, awaiting `register_ok`.                 |
+| `'ready'`        | Fully connected and registered. Can send/receive signaling messages.           |
+| `'reconnecting'` | Involuntary close from `'ready'` state. Backoff timer running.                 |
 
 ### Transitions
 
 **Normal connect (user-initiated):**
+
 ```
 disconnected → connecting → registering → ready
 ```
 
 **Involuntary close from ready:**
+
 ```
 ready → reconnecting → connecting → registering → ready
 ```
+
 or, if max attempts exhausted:
+
 ```
 reconnecting → disconnected
 ```
 
 **Explicit disconnect (user-initiated):**
+
 ```
 ready → disconnected     (or connecting|registering|reconnecting → disconnected)
 ```
+
 Explicit `disconnect()` always terminates to `'disconnected'` and **cancels any pending backoff timer**.
 
 ### Observable events
@@ -55,14 +61,14 @@ Callers subscribe to `client.on('state_change', (newState, oldState) => ...)`:
 
 The `reconnecting → connecting` transition timing follows an exponential backoff schedule:
 
-| Attempt | Delay     |
-| ------- | --------- |
-| 1       | 1 second  |
-| 2       | 2 seconds |
-| 3       | 4 seconds |
-| 4       | 8 seconds |
-| 5       | 16 seconds|
-| 6       | 32 seconds|
+| Attempt | Delay      |
+| ------- | ---------- |
+| 1       | 1 second   |
+| 2       | 2 seconds  |
+| 3       | 4 seconds  |
+| 4       | 8 seconds  |
+| 5       | 16 seconds |
+| 6       | 32 seconds |
 
 - **Default**: `baseDelayMs = 1000`, `maxAttempts = 6` (total max wait ~63s).
 - **Configurable**: `ReconnectOptions.baseDelayMs` and `.maxAttempts` allow test scaling and environment tuning.

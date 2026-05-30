@@ -77,3 +77,42 @@ derived from DESIGN.md §5.1
 - 联邦协议（§5.2 `federation/query`、`federation/proxy_signal`）在 M6 范围，不在本 fact 中。
 - P2P DataChannel 消息（§5.4 room:msg、room:file_offer、room:system 等）由 `cbor-key-allocation.md` 约束，不在本 fact 中。
 - 不枚举 `error` 值的完整 taxonomy —— DESIGN.md §5.1 仅定义了 `invite_result.error: "not_found"` 一个错误值。其他错误码和 `{type, error, detail, retry_after}` envelope 形状仍属于 BACKLOG known-unknown。
+
+## Error transport
+
+M2 server 通过三个渠道发射错误，不是统一的 envelope。逐一记录如下。
+
+### Channel A — `invite_result.error` string 字段
+
+| Value               | Handler              | File:line                                              |
+| ------------------- | -------------------- | ------------------------------------------------------ |
+| `"not_found"`       | `invite_redeem` 失败 | `packages/rendezvous/src/handlers/invite-redeem.ts:91` |
+| `"invalid_request"` | `invite_create` 失败 | `packages/rendezvous/src/handlers/invite-create.ts:88` |
+
+值 `"expired"` 和 `"already_redeemed"` 由 contract 保留（见上方 `invite_result.error` 取值表），
+但 M2 实现将其 collapse 为 `"not_found"`（已在表中注明）。
+
+### Channel B — WebSocket close codes
+
+| Code   | Meaning              | When                                                        | File:line                                          |
+| ------ | -------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
+| `1008` | Policy violation     | 无效 JSON、缺少 envelope、invalid peer_id、签名失败、未注册 | `server.ts:80,84,107,110,117`; `register.ts:24,31` |
+| `1011` | Server error         | register 通用 fallback                                      | `server.ts:189`                                    |
+| `1013` | Too large / overload | server 满（`max_peers`）; rate-limited                      | `register.ts:42`; `server.ts:206`                  |
+| `1000` | Normal closure       | client 发起断开                                             | (client-side)                                      |
+
+### Channel C — HTTP `501` with `{error: "..."}` body
+
+Federation 端点：`server.ts:64,68`。M6 will replace this with real federation response shapes.
+
+### Channel D — `{type: "error", code, message}` (reserved forward-compat)
+
+Client 定义了 handler（`packages/core/src/signaling.ts:489-499`）并通过 mock 测试
+（`packages/core/src/signaling.test.ts:723-748`），**但 M2 rendezvous server 不发射此 shape**。
+
+视为 forward-compat 预留：未来需要流过 WS message envelope（而非 close code）的错误类型将使用
+此 shape。Client handler 是正确的；server 当前只是不需要它。NOT dead code — it's reserved.
+
+### 边界
+
+以上枚举仅限 M2。M3+ 可能增加新的 close code（如 federation routing 失败），届时重新记录。

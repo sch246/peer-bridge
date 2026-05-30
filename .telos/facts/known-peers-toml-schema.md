@@ -21,6 +21,7 @@ home_rendezvous = "wss://rdv.example.com"
 ```
 
 字段：
+
 - `alias`: string — 用户为该 peer 指定的本地别名。
 - `peer_id`: string — 对方的 peer identifier（`PB-...` 格式）。
 - `added_at`: string — ISO 8601 UTC timestamp。

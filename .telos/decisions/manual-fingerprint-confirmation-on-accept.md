@@ -12,6 +12,7 @@ since: 2026-05-30
 `peer-bridge accept <code>` 时**必须在写入 `known_peers.toml` 之前**向用户展示对方 fingerprint 并要求手动确认。不得自动添加。
 
 确认提示格式（DESIGN.md §3.6）：
+
 ```
 Found peer "alice".
 Fingerprint: PB-7X4J2-M9KQR-ABCDE-FGHIJ-KLMNO-PQRST
@@ -60,11 +61,11 @@ CLI 提供 `--no-verify` flag 允许用户绕过确认。
 
 ## Consequences
 
-| 正面                                   | 负面                               |
-| -------------------------------------- | ---------------------------------- |
-| 消除 invite 阶段 TOFU compromise 窗口  | accept 流程非一键式（需一次确认）  |
-| 确认后 `trust = "verified"` 语义明确   | 无法脚本化 accept（by design）     |
-| 符合 DESIGN.md §12 安全强制清单        | `trust = "tofu"` 仅在非 CLI 路径出现（如通过 daemon IPC 接受但未做人工确认） |
+| 正面                                  | 负面                                                                         |
+| ------------------------------------- | ---------------------------------------------------------------------------- |
+| 消除 invite 阶段 TOFU compromise 窗口 | accept 流程非一键式（需一次确认）                                            |
+| 确认后 `trust = "verified"` 语义明确  | 无法脚本化 accept（by design）                                               |
+| 符合 DESIGN.md §12 安全强制清单       | `trust = "tofu"` 仅在非 CLI 路径出现（如通过 daemon IPC 接受但未做人工确认） |
 
 ## Related
 

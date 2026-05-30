@@ -14,6 +14,7 @@ Rendezvous server 技术栈：**Node.js + TypeScript + Fastify（HTTP 路由）+
 DESIGN.md §6.1 明确规定。不是 raw Node.js `http` 模块。
 
 含义：
+
 - **依赖体积**：引入 `fastify`（≥ ~2MB）和 `ws`。`ws` 库通过 Fastify 的 `@fastify/websocket` plugin 接入。
 - **错误处理风格**：Fastify 原生支持 JSON schema validation、请求/回复 lifecycle hooks，错误响应格式统一。
 - **集成测试方式**：Fastify 支持 `inject`（无需绑定端口）做 HTTP 层的单元测试。WebSocket 层仍需实际 socket 连接。

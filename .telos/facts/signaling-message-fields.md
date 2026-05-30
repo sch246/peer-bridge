@@ -15,24 +15,24 @@ Client ↔ rendezvous WebSocket 信令消息的字段 catalog。DESIGN.md §5.1 
 
 ### Client → Server
 
-| Message Type | Required Fields | Optional Fields | Notes |
-|---|---|---|---|
-| `register` | `peer_id`, `capabilities` | — | `sig` + `ts` 附加于外层 |
-| `lookup` | `peer_id` | — | |
-| `invite_create` | `code_hash`, `pubkey`, `peer_id`, `expires_at` | — | |
-| `invite_redeem` | `code_hash` | — | |
-| `signal` | `to`, `payload` | — | `payload` 为加密 binary |
-| `notify` | `to`, `sealed_box` | — | `sealed_box` ≤ 1KB |
+| Message Type    | Required Fields                                | Optional Fields | Notes                   |
+| --------------- | ---------------------------------------------- | --------------- | ----------------------- |
+| `register`      | `peer_id`, `capabilities`                      | —               | `sig` + `ts` 附加于外层 |
+| `lookup`        | `peer_id`                                      | —               |                         |
+| `invite_create` | `code_hash`, `pubkey`, `peer_id`, `expires_at` | —               |                         |
+| `invite_redeem` | `code_hash`                                    | —               |                         |
+| `signal`        | `to`, `payload`                                | —               | `payload` 为加密 binary |
+| `notify`        | `to`, `sealed_box`                             | —               | `sealed_box` ≤ 1KB      |
 
 ### Server → Client
 
-| Message Type | Required Fields | Optional Fields | Notes |
-|---|---|---|---|
-| `register_ok` | `server_id`, `federation_size` | — | **不包含** `origin_server`。`origin_server` 仅在 §5.2 联邦 `proxy_signal` 中出现 |
-| `lookup_result` | `found` | `home` | `home` 仅在 `found: true` 时存在 |
-| `invite_result` | — | `peer_id`, `pubkey`, `error` | 成功时 `{peer_id, pubkey}`；失败时 `{error: "not_found"}` |
-| `signal_in` | `from`, `payload` | — | |
-| `notify_in` | `sealed_box`, `queued_at` | — | |
+| Message Type    | Required Fields                | Optional Fields              | Notes                                                                            |
+| --------------- | ------------------------------ | ---------------------------- | -------------------------------------------------------------------------------- |
+| `register_ok`   | `server_id`, `federation_size` | —                            | **不包含** `origin_server`。`origin_server` 仅在 §5.2 联邦 `proxy_signal` 中出现 |
+| `lookup_result` | `found`                        | `home`                       | `home` 仅在 `found: true` 时存在                                                 |
+| `invite_result` | —                              | `peer_id`, `pubkey`, `error` | 成功时 `{peer_id, pubkey}`；失败时 `{error: "not_found"}`                        |
+| `signal_in`     | `from`, `payload`              | —                            |                                                                                  |
+| `notify_in`     | `sealed_box`, `queued_at`      | —                            |                                                                                  |
 
 ### 字段验证规则
 
@@ -43,6 +43,7 @@ Client ↔ rendezvous WebSocket 信令消息的字段 catalog。DESIGN.md §5.1 
 ### agent-blind 报告中的错误字段（不在本 spec 中）
 
 以下字段在 M2 agent-blind 报告中出现，但**不是** DESIGN.md §5.1 规定的字段：
+
 - `origin_server: null` in `register_ok` — `origin_server` 仅在 §5.2 联邦 `proxy_signal` 中出现，不在 `register_ok` 中。
 - `origin_server: null` in `invite_result` — 同上。
 - `{type: "register_error", ...}` — 注册失败以 WS close code 表示，不在 payload 中返回 error envelope。

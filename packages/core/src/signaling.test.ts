@@ -22,9 +22,7 @@ interface MockServer {
   url: string;
 }
 
-function createMockServer(
-  handler: (ws: WsWebSocket) => void,
-): Promise<MockServer> {
+function createMockServer(handler: (ws: WsWebSocket) => void): Promise<MockServer> {
   return new Promise((resolve) => {
     const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     wss.on('listening', () => {
@@ -194,13 +192,11 @@ describe('RendezvousClient', () => {
     await client.connect();
     assert.strictEqual(client.state, 'ready');
 
-    const disconnectPromise = new Promise<{ code: number; reason: string }>(
-      (resolve) => {
-        client.once('disconnect', (code, reason) => {
-          resolve({ code, reason });
-        });
-      },
-    );
+    const disconnectPromise = new Promise<{ code: number; reason: string }>((resolve) => {
+      client.once('disconnect', (code, reason) => {
+        resolve({ code, reason });
+      });
+    });
 
     client.disconnect();
 

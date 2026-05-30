@@ -235,10 +235,7 @@ export class RendezvousClient extends EventEmitter {
       try {
         msg = JSON.parse(raw.toString());
       } catch {
-        this.emit(
-          'error',
-          new RendezvousError('parse_error', 'Failed to parse server message'),
-        );
+        this.emit('error', new RendezvousError('parse_error', 'Failed to parse server message'));
         return;
       }
 
@@ -298,7 +295,6 @@ export class RendezvousClient extends EventEmitter {
     this._state = to;
     this.emit('state_change', from, to);
   }
-
 }
 
 // EventEmitter typing is inherited as-is. Callers type the listener callback

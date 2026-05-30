@@ -47,44 +47,32 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 - [x] **`packages/core/src/invite.ts` 单测**（commit `4e55b28` — 29 个单测覆盖 createInvite / buildInviteCreatePayload / buildInviteRedeemPayload / addPeerFromInvite / verifyPeerTrust）
 - [x] **三平台 CI matrix**（commit `3dba86f` — `.github/workflows/ci.yml`，3 OS × 2 Node version = 6 matrix cells）
 
-## M2 启动准入
+## M2 启动准入（已通过；保留供历史参考）
 
-| 准入项              | 状态                                                         |
-| ------------------- | ------------------------------------------------------------ |
-| M1 全部关闭         | ✅                                                           |
-| telos 存量          | 11 facts + 14 decisions + 2 tensions                         |
-| CI matrix 就绪      | ✅（6 cells，`fail-fast: false`）                            |
-| test vectors runner | ✅（sealed_box + fingerprint_sig + peer_id + invite + cbor） |
-| 已知测试覆盖        | known-peers (35), invite (29), crypto\* (15), vectors (6)    |
-
-## M2 启动准入
-
-| 准入项              | 状态                                                         |
-| ------------------- | ------------------------------------------------------------ |
-| M1 全部关闭         | ✅                                                           |
-| telos 存量          | 17 facts + 16 decisions + 2 tensions                         |
-| CI matrix 就绪      | ✅（6 cells，`fail-fast: false`）                            |
-| test vectors runner | ✅（sealed_box + fingerprint_sig + peer_id + invite + cbor） |
-| 已知测试覆盖        | known-peers (35), invite (29), crypto\* (15), vectors (6)    |
+M2 启动准入条件已于 brief #1 之前满足：M1 全部关闭 + telos 17 facts + 16 decisions + 2 tensions（M2 启动时计数）+ CI matrix 6 cells（M2 内已收敛至 3 cells per `decisions/node-22-minimum.md`）。
 
 ## M2 in-scope（DESIGN.md §11.M2）
 
 - [x] 单 server 实现，无联邦（commit 3f192e7）
-- [ ] `core` 的 rendezvous-client（含 sealed box 离线 notify）
-- [ ] 邀请码端到端流程跑通（CLI 层）
-- [ ] 三平台 CI 跑通 invite/accept
+- [x] `core` 的 rendezvous-client（含 sealed box 离线 notify）（briefs #2a-#2d: 3e2c287, bc83c0b, 093510e, 42903e9）
+- [x] 邀请码端到端流程跑通（CLI 层）（briefs #3a/#3b/#3c: ffe7789, 1f0d27f, 18e0e97）
+- [x] 三平台 CI 跑通 invite/accept（brief #4 cascade: 981f09f, 035455c, 8e2ca6e, 0b38158, 775f546）
+
+**M2 实施层关闭**：262 pass + 1 skip 全绿，CI 三平台 × Node 22 全绿。退出条件 (下方) 待履行。
+
+下一步：M2 退出仪式（agent-blind 重跑 + 6 个 block-exit unknowns + Q7 决策 + telos consolidation pass）。
 
 ## M2 known unknowns
 
 以下项 M2 实现需要决策，但 telos 尚未沉淀为 fact/decision：
 
-| #   | 未知项                                                        | 所属 DESIGN.md §                                     | 缺失原因                                                                                                                                                                                                    |
-| --- | ------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | rendezvous server 的持久化模型                                | §6.1                                                 | **已决定：in-memory only**。DESIGN.md §6.1: "运行时数据全内存，重启丢失可接受"。无需单独 telos 文件；约束已沉淀在 `facts/rendezvous-server-config.md`。可选 SQLite 仅用于持久化 federation 配置和管理员设置 |
-| 2   | sealed-box 通知队列容量上限与 TTL 清理策略                    | §3.8 sealed-box-for-offline-notify                   | decision `sealed-box-for-offline-notify.md` 仅规定加密原语选择，未定义 per-peer 队列容量、溢出策略（drop-oldest? reject-new?）或 TTL 过期清理的触发时机（lazy-clean? cron tick?）                           |
-| 3   | WebSocket 信令消息的 JSON schema 与错误码枚举                 | §5.1 信令格式                                        | DESIGN.md §5.1 给了 prose 描述 + 示例，但 M0 test vectors 未生成信令级的 (input, output) 向量；M2 实现需要 validate 字段齐全、错误码枚举不漂移                                                              |
-| 4   | rendezvous 的速率限制与 DoS 防御姿态                          | §12.5 "rendezvous 对单 IP 的 invite/lookup 速率限制" | §12.5 只说"必须做"但未给出具体阈值、窗口算法、驳回响应码；是 prose 约束不是可测 spec                                                                                                                        |
-| 5   | 联邦协议的 hook 预留（M6 才实现但 M2 信令格式不能 foreclose） | §3.5 rendezvous-federation-not-turn                  | decision `rendezvous-federation-not-turn.md` 记录了 JSON-RPC 联邦的 strategy 选择，但 M2 单-server 的 WebSocket 消息是否携带 `federation_id` / `origin_server` 字段作为 forward-compat 占位，目前未决策     |
+| #   | 未知项                                                        | 所属 DESIGN.md §                                     | 缺失原因                                                                                                                                                                                                                                                  |
+| --- | ------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | rendezvous server 的持久化模型                                | §6.1                                                 | **已决定：in-memory only**。DESIGN.md §6.1: "运行时数据全内存，重启丢失可接受"。无需单独 telos 文件；约束已沉淀在 `facts/rendezvous-server-config.md`。可选 SQLite 仅用于持久化 federation 配置和管理员设置                                               |
+| 2   | sealed-box 通知队列容量上限与 TTL 清理策略                    | §3.8 sealed-box-for-offline-notify                   | decision `sealed-box-for-offline-notify.md` 仅规定加密原语选择，未定义 per-peer 队列容量、溢出策略（drop-oldest? reject-new?）或 TTL 过期清理的触发时机（lazy-clean? cron tick?） → tracked as T-7, T-8 in M2 退出条件                                    |
+| 3   | WebSocket 信令消息的 JSON schema 与错误码枚举                 | §5.1 信令格式                                        | DESIGN.md §5.1 给了 prose 描述 + 示例，但 M0 test vectors 未生成信令级的 (input, output) 向量；M2 实现需要 validate 字段齐全、错误码枚举不漂移 → ✅ resolved: `facts/signaling-message-fields.md`                                                         |
+| 4   | rendezvous 的速率限制与 DoS 防御姿态                          | §12.5 "rendezvous 对单 IP 的 invite/lookup 速率限制" | §12.5 只说"必须做"但未给出具体阈值、窗口算法、驳回响应码；是 prose 约束不是可测 spec → tracked as T-12 in M2 退出条件                                                                                                                                     |
+| 5   | 联邦协议的 hook 预留（M6 才实现但 M2 信令格式不能 foreclose） | §3.5 rendezvous-federation-not-turn                  | decision `rendezvous-federation-not-turn.md` 记录了 JSON-RPC 联邦的 strategy 选择，但 M2 单-server 的 WebSocket 消息是否携带 `federation_id` / `origin_server` 字段作为 forward-compat 占位，目前未决策 → ✅ deferred to M6 — M2 信令不含 federation 字段 |
 
 ## M2 agent-blind 检查结果
 

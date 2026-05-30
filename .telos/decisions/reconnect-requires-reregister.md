@@ -12,12 +12,14 @@ since: 2026-05-30
 When a signaling client's WebSocket reconnects after a close, the rendezvous server treats it as a **fresh session**. Client MUST send `register` immediately after WebSocket reopens. Server preserves NO session state across reconnects.
 
 **Reconnect sequence**（client side）：
+
 1. WS reopens（new TCP + TLS handshake）
 2. Send `register { peer_id, capabilities }`（fresh, with `sig` + `ts`）
 3. Await `register_ok { server_id, federation_size }`
 4. Resume normal operation
 
 **Server-side invariants**：
+
 - `peer_registrations` entry was removed at WS close（per [disconnect-immediate-offline](./disconnect-immediate-offline.md)）
 - The new WS connection is a stranger until `register` succeeds — no implicit identity binding
 - Pending `invite_records`（keyed by `code_hash`）DO survive reconnect — not tied to inviter's WS connection
@@ -65,11 +67,11 @@ Server 在 WS reopen 时将连接绑定到之前注册过的 `peer_id`（基于 
 
 ## Consequences
 
-| 正面                             | 负面                                         |
-| -------------------------------- | -------------------------------------------- |
-| Server 无 session 恢复逻辑       | 每次重连需 `register` 往返（one extra RTT）  |
-| 无 token 存储/过期/重放问题      | 网络不稳定时频繁 register（可客户端退避吸收）|
-| 与 D1 一致（close = gone）       | `invite_create` 后立刻断连：invite 存活但 inviter 需重注册才能收 `signal_in` |
+| 正面                        | 负面                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| Server 无 session 恢复逻辑  | 每次重连需 `register` 往返（one extra RTT）                                  |
+| 无 token 存储/过期/重放问题 | 网络不稳定时频繁 register（可客户端退避吸收）                                |
+| 与 D1 一致（close = gone）  | `invite_create` 后立刻断连：invite 存活但 inviter 需重注册才能收 `signal_in` |
 
 ## Related
 

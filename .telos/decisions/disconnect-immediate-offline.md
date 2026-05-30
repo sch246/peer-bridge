@@ -14,6 +14,7 @@ When a peer's WebSocket connection closes mid-session, the rendezvous server **i
 **Server behavior**: the WS `close` handler removes the entry from `peer_registrations` **synchronously**, before yielding to the event loop. A subsequent `lookup` for that `peer_id` returns `{found: false}` until the peer sends `register` on a new connection.
 
 **Piggyback state that is NOT evicted**:
+
 - `invite_records` — keyed by `code_hash`, not by inviter's WS connection. Pending invites survive the inviter's disconnect.
 - `offline_notifications` — keyed by target `peer_id`, not by the sender's connection. Queued `notify_in` wait for the peer to re-register (see [reconnect-requires-reregister](./reconnect-requires-reregister.md)).
 
@@ -51,11 +52,11 @@ WS 关闭后保留注册 30s，期间同 `peer_id` 的新连接无需重新 `reg
 
 ## Consequences
 
-| 正面                             | 负面                                   |
-| -------------------------------- | -------------------------------------- |
-| Server 无 timer 状态，实现简单   | Client 必须每断必重注册（一次往返）    |
-| `lookup` 语义无歧义              | 网络抖动导致频繁 register（可客户端重试吸收） |
-| 符合 §6.1 全内存哲学             | 离线通知 sender 无法提前知道 peer 离线 |
+| 正面                           | 负面                                          |
+| ------------------------------ | --------------------------------------------- |
+| Server 无 timer 状态，实现简单 | Client 必须每断必重注册（一次往返）           |
+| `lookup` 语义无歧义            | 网络抖动导致频繁 register（可客户端重试吸收） |
+| 符合 §6.1 全内存哲学           | 离线通知 sender 无法提前知道 peer 离线        |
 
 ## Related
 

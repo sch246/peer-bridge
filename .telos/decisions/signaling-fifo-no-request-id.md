@@ -53,11 +53,11 @@ Client → rendezvous JSON signaling has **at-most-one in-flight request at a ti
 
 ## Consequences
 
-| 正面                                       | 负面                                     |
-| ------------------------------------------ | ---------------------------------------- |
-| 协议 surface 最小（无 request_id 字段）    | 无法并行查询——串行化客户端信令            |
-| FIFO 匹配无需实现层 correlation 逻辑       | 错误实现（并发两个请求）的行为未定义       |
-| 与 §5.1 字段表一致，不与 `signaling-message-fields.md` 冲突 | 未来如需要并行查询需协议升级           |
+| 正面                                                        | 负面                                 |
+| ----------------------------------------------------------- | ------------------------------------ |
+| 协议 surface 最小（无 request_id 字段）                     | 无法并行查询——串行化客户端信令       |
+| FIFO 匹配无需实现层 correlation 逻辑                        | 错误实现（并发两个请求）的行为未定义 |
+| 与 §5.1 字段表一致，不与 `signaling-message-fields.md` 冲突 | 未来如需要并行查询需协议升级         |
 
 ## Related
 

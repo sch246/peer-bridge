@@ -857,3 +857,452 @@ describe('RendezvousClient', () => {
     client.disconnect();
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Push handlers + fire-and-forget (M2 brief #2c)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Push handlers + fire-and-forget', () => {
+  before(async () => {
+    await initCrypto();
+  });
+
+  // ── signal() fire-and-forget ─────────────────────────────────────────────
+
+  it('signal sends correct frame shape', async (t) => {
+    const kp = await generateKeyPair();
+    let signalFrame: Record<string, unknown> | null = null;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'signal') {
+          signalFrame = msg;
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    client.signal('peer-abc', 'encrypted-payload-data');
+
+    // Allow async delivery
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.ok(signalFrame, 'signal frame must be sent');
+    assert.strictEqual(signalFrame!.type, 'signal');
+    const payload = signalFrame!.payload as Record<string, unknown>;
+    assert.strictEqual(payload.to, 'peer-abc');
+    assert.strictEqual(payload.payload, 'encrypted-payload-data');
+    assert.ok(typeof signalFrame!.sig === 'string', 'sig must be present');
+    assert.ok(typeof signalFrame!.ts === 'string', 'ts must be present');
+
+    // Verify signature
+    const valid = verifyClientSignature(payload, signalFrame!.sig as string, signalFrame!.ts as string, kp.publicKey);
+    assert.strictEqual(valid, true, 'signal signature must verify');
+
+    client.disconnect();
+  });
+
+  it('signal returns synchronously (void)', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    const result = client.signal('peer-x', 'data');
+    assert.strictEqual(result, undefined, 'signal must return undefined (void)');
+
+    client.disconnect();
+  });
+
+  it('signal throws if state !== ready', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    // Disconnect and wait for state transition
+    const disconnectPromise = new Promise<void>((resolve) => {
+      client.once('disconnect', () => resolve());
+    });
+    client.disconnect();
+    await disconnectPromise;
+    assert.strictEqual(client.state, 'disconnected');
+
+    assert.throws(
+      () => client.signal('peer', 'data'),
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'not_ready');
+        return true;
+      },
+    );
+  });
+
+  it('signal does not consume FIFO slot', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'signal') {
+          // fire-and-forget — no response
+        } else if (msg.type === 'lookup') {
+          ws.send(JSON.stringify({ type: 'lookup_result', found: true, home: 'rdv://found' }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    // Send signal, then lookup — both should work
+    client.signal('peer', 'data');
+    const result = await client.lookup('peer');
+    assert.strictEqual(result.found, true);
+    assert.strictEqual(result.home, 'rdv://found');
+
+    client.disconnect();
+  });
+
+  // ── notify() fire-and-forget ─────────────────────────────────────────────
+
+  it('notify sends correct frame shape', async (t) => {
+    const kp = await generateKeyPair();
+    let notifyFrame: Record<string, unknown> | null = null;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'notify') {
+          notifyFrame = msg;
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    client.notify('peer-xyz', 'base64sealedboxdata==');
+
+    // Allow async delivery
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.ok(notifyFrame, 'notify frame must be sent');
+    assert.strictEqual(notifyFrame!.type, 'notify');
+    const payload = notifyFrame!.payload as Record<string, unknown>;
+    assert.strictEqual(payload.to, 'peer-xyz');
+    assert.strictEqual(payload.sealed_box, 'base64sealedboxdata==');
+    assert.ok(typeof notifyFrame!.sig === 'string', 'sig must be present');
+    assert.ok(typeof notifyFrame!.ts === 'string', 'ts must be present');
+
+    // Verify signature
+    const valid = verifyClientSignature(payload, notifyFrame!.sig as string, notifyFrame!.ts as string, kp.publicKey);
+    assert.strictEqual(valid, true, 'notify signature must verify');
+
+    client.disconnect();
+  });
+
+  it('notify throws if state !== ready', async (t) => {
+    const kp = await generateKeyPair();
+    const client = new RendezvousClient({ keypair: kp, url: 'ws://localhost:9999' });
+    assert.strictEqual(client.state, 'disconnected');
+
+    assert.throws(
+      () => client.notify('peer', 'box'),
+      (err: unknown) => {
+        assert.ok(err instanceof RendezvousError);
+        assert.strictEqual((err as RendezvousError).code, 'not_ready');
+        return true;
+      },
+    );
+  });
+
+  // ── Push handler: signal_in ──────────────────────────────────────────────
+
+  it('signal_in event fires with correct (from, payload) when server pushes', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          // Send signal_in after register_ok (normal flow)
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          ws.send(JSON.stringify({ type: 'signal_in', from: 'PB-ALICE', payload: 'encrypted-stuff' }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+
+    const signalEvents: Array<{ from: string; payload: string }> = [];
+    client.on('signal_in', (from, payload) => {
+      signalEvents.push({ from, payload });
+    });
+
+    await client.connect();
+
+    // Allow async delivery of signal_in after connect resolves
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.strictEqual(signalEvents.length, 1, 'exactly one signal_in event');
+    assert.strictEqual(signalEvents[0].from, 'PB-ALICE');
+    assert.strictEqual(signalEvents[0].payload, 'encrypted-stuff');
+
+    client.disconnect();
+  });
+
+  // ── Push handler: notify_in ──────────────────────────────────────────────
+
+  it('notify_in event fires with correct (sealed_box, queued_at)', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          ws.send(JSON.stringify({
+            type: 'notify_in',
+            sealed_box: 'dmVyeSBsb25nIGJhc2U2NCBzdHJpbmcgd2l0aCBtYW55IGNoYXJhY3RlcnM=',
+            queued_at: '2024-06-15T12:00:00.000Z',
+          }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+
+    const notifyEvents: Array<{ sealed_box: string; queued_at: string }> = [];
+    client.on('notify_in', (sealed_box, queued_at) => {
+      notifyEvents.push({ sealed_box, queued_at });
+    });
+
+    await client.connect();
+
+    // Allow async delivery
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.strictEqual(notifyEvents.length, 1, 'exactly one notify_in event');
+    assert.strictEqual(notifyEvents[0].sealed_box, 'dmVyeSBsb25nIGJhc2U2NCBzdHJpbmcgd2l0aCBtYW55IGNoYXJhY3RlcnM=');
+    assert.strictEqual(notifyEvents[0].queued_at, '2024-06-15T12:00:00.000Z');
+
+    client.disconnect();
+  });
+
+  // ── Q-N3: notify_in before register_ok ───────────────────────────────────
+
+  it('Q-N3: notify_in dispatches before register_ok during registering state', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          // Simulate Q-N3: server flushes queued notify_in BEFORE register_ok.
+          // Per register.ts handleRegister: pending_notifications are delivered
+          // before sendRegisterOk.
+          ws.send(JSON.stringify({
+            type: 'notify_in',
+            sealed_box: 'cTJucXVldWVkbm90aWZ5',
+            queued_at: '2024-01-01T00:00:00.000Z',
+          }));
+          ws.send(JSON.stringify({
+            type: 'register_ok',
+            server_id: 'test',
+            federation_size: 0,
+          }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+
+    const eventOrder: string[] = [];
+    let notifyData: { sealed_box: string; queued_at: string } | null = null;
+
+    client.on('notify_in', (sealed_box, queued_at) => {
+      eventOrder.push('notify_in');
+      notifyData = { sealed_box, queued_at };
+    });
+    client.on('registered', () => {
+      eventOrder.push('registered');
+    });
+    client.on('state_change', (_, to) => {
+      if (to === 'ready') eventOrder.push('state_change:ready');
+    });
+
+    await client.connect();
+
+    assert.strictEqual(client.state, 'ready');
+
+    // Q-N3 critical assertion: notify_in fired exactly once
+    const notifyIdx = eventOrder.indexOf('notify_in');
+    const registeredIdx = eventOrder.indexOf('registered');
+    assert.ok(notifyIdx >= 0, 'notify_in event must have fired');
+    assert.ok(registeredIdx >= 0, 'registered event must have fired');
+    assert.ok(
+      notifyIdx < registeredIdx,
+      `Q-N3 violation: notify_in (idx ${notifyIdx}) must fire before registered (idx ${registeredIdx}). Order: ${eventOrder.join(' -> ')}`,
+    );
+
+    // Verify payload round-trips
+    assert.strictEqual(notifyData!.sealed_box, 'cTJucXVldWVkbm90aWZ5');
+    assert.strictEqual(notifyData!.queued_at, '2024-01-01T00:00:00.000Z');
+
+    client.disconnect();
+  });
+
+  // ── Push during in-flight request ────────────────────────────────────────
+
+  it('push during in-flight request: signal_in does not corrupt FIFO', async (t) => {
+    const kp = await generateKeyPair();
+    let lookupWs: WsWebSocket | null = null;
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        } else if (msg.type === 'lookup') {
+          lookupWs = ws;
+          // Do NOT respond yet — push signal_in first
+          ws.send(JSON.stringify({ type: 'signal_in', from: 'PB-PUSHER', payload: 'push-during-lookup' }));
+          // Then respond to lookup
+          ws.send(JSON.stringify({ type: 'lookup_result', found: true, home: 'rdv://target' }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+    await client.connect();
+
+    const signalEvents: Array<{ from: string; payload: string }> = [];
+    client.on('signal_in', (from, payload) => {
+      signalEvents.push({ from, payload });
+    });
+
+    const result = await client.lookup('target-peer');
+
+    // Allow async delivery of signal_in
+    await new Promise((r) => setTimeout(r, 20));
+
+    // signal_in event must have fired
+    assert.strictEqual(signalEvents.length, 1, 'signal_in must fire during in-flight lookup');
+    assert.strictEqual(signalEvents[0].from, 'PB-PUSHER');
+    assert.strictEqual(signalEvents[0].payload, 'push-during-lookup');
+
+    // lookup must resolve correctly — FIFO not corrupted
+    assert.strictEqual(result.found, true);
+    assert.strictEqual(result.home, 'rdv://target');
+
+    client.disconnect();
+  });
+
+  // ── signal_in in non-ready state ─────────────────────────────────────────
+
+  it('signal_in in registering state: tolerated and emitted', async (t) => {
+    const kp = await generateKeyPair();
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          // Push signal_in before register_ok (forward-compat: server may do this
+          // even though protocol says it only forwards to registered peers)
+          ws.send(JSON.stringify({ type: 'signal_in', from: 'PB-EARLY', payload: 'early-signal' }));
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+
+    const signalEvents: Array<{ from: string; payload: string }> = [];
+    client.on('signal_in', (from, payload) => {
+      signalEvents.push({ from, payload });
+    });
+
+    // During connect, state is 'registering' when signal_in arrives
+    await client.connect();
+    assert.strictEqual(client.state, 'ready');
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    // [choice] tolerate-and-emit: signal_in in non-ready state is emitted, not dropped
+    assert.strictEqual(signalEvents.length, 1, 'signal_in must be emitted even in registering state');
+    assert.strictEqual(signalEvents[0].from, 'PB-EARLY');
+    assert.strictEqual(signalEvents[0].payload, 'early-signal');
+
+    client.disconnect();
+  });
+
+  // ── notify_in sealed_box round-trip ──────────────────────────────────────
+
+  it('notify_in sealed_box field round-trips intact with long base64 string', async (t) => {
+    const kp = await generateKeyPair();
+    const longBase64 = 'TG9yZW0gaXBzdW0gZG9sb3Igc2l0IGFtZXQgY29uc2VjdGV0dXIgYWRpcGlzY2luZyBlbGl0IHNlZCBkbyBlaXVzbW9kIHRlbXBvciBpbmNpZGlkdW50IHV0IGxhYm9yZSBldCBkb2xvcmUgbWFnbmEgYWxpcXVhIFV0IGVuaW0gYWQgbWluaW0gdmVuaWFtIHF1aXMgbm9zdHJ1ZCBleGVyY2l0YXRpb24gdWxsYW1jbyBsYWJvcmlzIG5pc2kgdXQgYWxpcXVpcCBleCBlYSBjb21tb2RvIGNvbnNlcXVhdA==';
+
+    const { server, url } = await createMockServer((ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'register') {
+          ws.send(JSON.stringify({ type: 'register_ok', server_id: 'test', federation_size: 0 }));
+          ws.send(JSON.stringify({
+            type: 'notify_in',
+            sealed_box: longBase64,
+            queued_at: '2025-12-01T00:00:00.000Z',
+          }));
+        }
+      });
+    });
+    t.after(() => { server.close(); client.disconnect(); });
+
+    const client = new RendezvousClient({ keypair: kp, url, registerTimeoutMs: 2000 });
+
+    const notifyEvents: Array<{ sealed_box: string; queued_at: string }> = [];
+    client.on('notify_in', (sealed_box, queued_at) => {
+      notifyEvents.push({ sealed_box, queued_at });
+    });
+
+    await client.connect();
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.strictEqual(notifyEvents.length, 1);
+    assert.strictEqual(notifyEvents[0].sealed_box, longBase64, 'long base64 sealed_box must round-trip intact');
+    assert.strictEqual(notifyEvents[0].queued_at, '2025-12-01T00:00:00.000Z');
+
+    client.disconnect();
+  });
+});

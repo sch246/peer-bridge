@@ -31,6 +31,8 @@ export interface RendezvousClientEvents {
   registered: (server_id: string, federation_size: number) => void;
   disconnect: (code: number, reason: string) => void;
   error: (err: Error) => void;
+  signal_in: (from: string, payload: string) => void;
+  notify_in: (sealed_box: string, queued_at: string) => void;
 }
 
 export interface RendezvousClientOptions {
@@ -271,6 +273,41 @@ export class RendezvousClient extends EventEmitter {
     };
   }
 
+  // ── Fire-and-forget methods ────────────────────────────────────────────
+
+  /**
+   * Send an encrypted signaling message to a peer. Fire-and-forget per S1.
+   * [choice] fire-and-forget returns void synchronously — calling-code awaits
+   * is misleading since the server sends no ack.
+   * Bypasses FIFO: can be called while a request is in-flight.
+   * @throws {RendezvousError} with code 'not_ready' if state !== 'ready'.
+   */
+  signal(toPeer: string, payload: string): void {
+    this._guardReady();
+    // Assumes crypto is initialized (guaranteed: _guardReady ensures connect() completed)
+    const msgPayload = { to: toPeer, payload };
+    const ts = new Date().toISOString();
+    const sig = this._sign(msgPayload, ts);
+    this._ws!.send(JSON.stringify({ type: 'signal', payload: msgPayload, sig, ts }));
+  }
+
+  /**
+   * Send a sealed-box notification to a peer. Fire-and-forget per S1.
+   * [choice] fire-and-forget returns void synchronously — server sends no ack.
+   * Server queues for offline targets per sealed_box contract; client doesn't
+   * know or care about offline delivery.
+   * Bypasses FIFO: can be called while a request is in-flight.
+   * @throws {RendezvousError} with code 'not_ready' if state !== 'ready'.
+   */
+  notify(toPeer: string, sealedBox: string): void {
+    this._guardReady();
+    // Assumes crypto is initialized (guaranteed: _guardReady ensures connect() completed)
+    const msgPayload = { to: toPeer, sealed_box: sealedBox };
+    const ts = new Date().toISOString();
+    const sig = this._sign(msgPayload, ts);
+    this._ws!.send(JSON.stringify({ type: 'notify', payload: msgPayload, sig, ts }));
+  }
+
   // ── Internal helpers ───────────────────────────────────────────────────
 
   /**
@@ -421,6 +458,24 @@ export class RendezvousClient extends EventEmitter {
         return;
       }
 
+      // Push message dispatch for signal_in and notify_in.
+      // [choice] Unified dispatch: handlers emit regardless of FSM state.
+      // Q-N3: notify_in may arrive before register_ok during 'registering' state.
+      // Push messages run BEFORE the _pendingRequest FIFO check, so they
+      // never get consumed by the FIFO-matching logic (they won't match
+      // the expectedType of any in-flight request).
+      if (msg.type === 'signal_in') {
+        // [choice] signal_in in non-ready state: tolerate-and-emit.
+        // Forward-compat permissive — emit the event even if the message
+        // was unexpected by protocol.
+        this.emit('signal_in', msg.from as string, msg.payload as string);
+        return;
+      }
+      if (msg.type === 'notify_in') {
+        this.emit('notify_in', msg.sealed_box as string, msg.queued_at as string);
+        return;
+      }
+
       // Dispatch to pending request if type matches expected
       if (this._pendingRequest) {
         if (msg.type === this._pendingRequest.expectedType) {
@@ -430,12 +485,6 @@ export class RendezvousClient extends EventEmitter {
           return;
         }
         // Unexpected type while waiting — tolerate (forward-compat)
-        return;
-      }
-
-      // [choice] Push messages (signal_in, notify_in): silently ignore in 2b.
-      // 2c will install real handlers that emit events for push dispatch.
-      if (msg.type === 'signal_in' || msg.type === 'notify_in') {
         return;
       }
     });

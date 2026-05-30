@@ -115,12 +115,18 @@ describe('runInvite', () => {
         dataDir: dir,
         _clientFactory: async () => client,
       });
-      const mockFn = client.inviteCreate as unknown as { mock: { calls: Array<{ arguments: [Record<string, unknown>] }> } };
+      const mockFn = client.inviteCreate as unknown as {
+        mock: { calls: Array<{ arguments: [Record<string, unknown>] }> };
+      };
       const payload = mockFn.mock.calls[0]?.arguments[0];
       assert.ok(payload, 'inviteCreate should be called with a payload');
-      assert.ok(typeof payload.code_hash === 'string' && (payload.code_hash as string).length === 64,
-        `code_hash should be 64-char hex`);
-      assert.ok(typeof payload.peer_id === 'string' && (payload.peer_id as string).startsWith('PB-'));
+      assert.ok(
+        typeof payload.code_hash === 'string' && (payload.code_hash as string).length === 64,
+        `code_hash should be 64-char hex`,
+      );
+      assert.ok(
+        typeof payload.peer_id === 'string' && (payload.peer_id as string).startsWith('PB-'),
+      );
       assert.ok(typeof payload.expires_at === 'string');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -163,7 +169,9 @@ describe('runInvite', () => {
           inviteCreate: mock.fn(async () => {
             throw new Error('boom');
           }),
-          disconnect: mock.fn(() => { disconnectCalled = true; }),
+          disconnect: mock.fn(() => {
+            disconnectCalled = true;
+          }),
         }),
       });
       assert.strictEqual(result.exitCode, 2);
@@ -181,9 +189,13 @@ describe('runInvite', () => {
       const result = await runInvite({
         dataDir: dir,
         _clientFactory: async () => ({
-          connect: mock.fn(async () => { throw new Error('ws_open_failed'); }),
+          connect: mock.fn(async () => {
+            throw new Error('ws_open_failed');
+          }),
           inviteCreate: mock.fn(async () => ({ peer_id: 'PB-X', pubkey: 'x' })),
-          disconnect: mock.fn(() => { disconnectCalled = true; }),
+          disconnect: mock.fn(() => {
+            disconnectCalled = true;
+          }),
         }),
       });
       // Connect failure happens before client.connect() in try block

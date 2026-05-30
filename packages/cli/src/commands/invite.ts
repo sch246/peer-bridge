@@ -24,11 +24,7 @@ import {
   RendezvousClient,
   RendezvousError,
 } from '@peer-bridge/core';
-import type {
-  InviteCreatePayload,
-  InviteResultResponse,
-  SignKeyPair,
-} from '@peer-bridge/core';
+import type { InviteCreatePayload, InviteResultResponse, SignKeyPair } from '@peer-bridge/core';
 
 export interface InviteArgs {
   dataDir?: string;
@@ -46,8 +42,6 @@ export interface CliResult {
   stdout: string;
   stderr: string;
 }
-
-
 
 /** The placeholder URL written by `peer-bridge init` — exact-match check. */
 const PLACEHOLDER_URL = 'wss://rdv.example.com';
@@ -67,7 +61,7 @@ export async function runInvite(args: InviteArgs = {}): Promise<CliResult> {
     return {
       exitCode: 1,
       stdout: '',
-      stderr: "No identity. Run `peer-bridge init` first.\n",
+      stderr: 'No identity. Run `peer-bridge init` first.\n',
     };
   }
 

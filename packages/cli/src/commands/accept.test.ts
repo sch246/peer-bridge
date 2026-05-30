@@ -154,7 +154,10 @@ describe('runAccept', () => {
       assert.ok(result.stdout.includes('NOT added'));
 
       const kpPath = path.join(dir, 'known_peers.toml');
-      assert.ok(!existsSync(kpPath), `known_peers.toml should NOT exist, got:\n${existsSync(kpPath) ? readFileSync(kpPath, 'utf-8') : '(none)'}`);
+      assert.ok(
+        !existsSync(kpPath),
+        `known_peers.toml should NOT exist, got:\n${existsSync(kpPath) ? readFileSync(kpPath, 'utf-8') : '(none)'}`,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -206,7 +209,7 @@ describe('runAccept', () => {
       const first = await runAccept({
         code: 'cobra-sapphire-lighthouse-tango-a1b2',
         dataDir: dir,
-        promptInput: mockPrompt('y'),  // confirm Y
+        promptInput: mockPrompt('y'), // confirm Y
         _clientFactory: clientFactory,
       });
       assert.strictEqual(first.exitCode, 0);
@@ -270,7 +273,9 @@ describe('runAccept', () => {
           inviteRedeem: mock.fn(async () => {
             throw new Error('boom');
           }),
-          disconnect: mock.fn(() => { disconnectCalled = true; }),
+          disconnect: mock.fn(() => {
+            disconnectCalled = true;
+          }),
         }),
       });
       assert.strictEqual(result.exitCode, 1);

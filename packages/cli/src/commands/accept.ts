@@ -40,10 +40,7 @@ import {
   saveKnownPeers,
   findPeer,
 } from '@peer-bridge/core';
-import type {
-  InviteResultResponse,
-  SignKeyPair,
-} from '@peer-bridge/core';
+import type { InviteResultResponse, SignKeyPair } from '@peer-bridge/core';
 import { hashInviteCode } from '@peer-bridge/protocol';
 
 export interface AcceptArgs {
@@ -112,7 +109,7 @@ export async function runAccept(args: AcceptArgs): Promise<CliResult> {
     return {
       exitCode: 1,
       stdout: '',
-      stderr: "No identity. Run `peer-bridge init` first.\n",
+      stderr: 'No identity. Run `peer-bridge init` first.\n',
     };
   }
 
@@ -134,7 +131,8 @@ export async function runAccept(args: AcceptArgs): Promise<CliResult> {
     return {
       exitCode: 64,
       stdout: '',
-      stderr: `Error: '${args.code || ''}' is not a valid invite code.\n` +
+      stderr:
+        `Error: '${args.code || ''}' is not a valid invite code.\n` +
         'Usage: peer-bridge accept <invite-code>\n',
     };
   }
@@ -180,9 +178,7 @@ export async function runAccept(args: AcceptArgs): Promise<CliResult> {
   const prompt = args.promptInput ?? createReadlinePrompt();
 
   process.stdout.write(
-    `Found peer.\n` +
-    `Fingerprint: ${inviteResult.peer_id}\n` +
-    `Add to known peers? [Y/n] `,
+    `Found peer.\n` + `Fingerprint: ${inviteResult.peer_id}\n` + `Add to known peers? [Y/n] `,
   );
   const confirmInput = await prompt();
 

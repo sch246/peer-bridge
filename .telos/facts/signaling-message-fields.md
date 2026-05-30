@@ -40,6 +40,7 @@ Client ↔ rendezvous WebSocket 信令消息的字段 catalog。DESIGN.md §5.1 
 - 额外字段 → 容忍（forward-compat 保留），不因多余字段 reject。
 - 字段类型不符 → 同缺失处理。
 - `signal` 和 `notify` 是 fire-and-forget（C→S 层）。若 `signal` 发送时目标 peer 不在线，server 静默丢弃（无 error response）。重试由 sender 自行负责。（`notify` 的 sealed-box 消息在 `offline_notifications` 中排队 — 见 `decisions/sealed-box-for-offline-notify.md`。）
+- `register_ok` 是 register 成功的最终响应，但 server MAY 在 `register_ok` 之前推送 0 或多个 `notify_in`（offline 队列中积压的 sealed-box 消息）。client 必须能处理 `notify_in` 在 `register_ok` 之前到达的情况。理由：保证 offline 消息在 client 假设已注册之前先送达，避免 client 在 register_ok 后立即断开导致消息丢失。Source: `packages/rendezvous/src/handlers/register.ts:20-21` (commit 3f192e7)。
 
 ### agent-blind 报告中的错误字段（不在本 spec 中）
 

@@ -69,7 +69,7 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
 
 ## M2 in-scope（DESIGN.md §11.M2）
 
-- [ ] 单 server 实现，无联邦
+- [x] 单 server 实现，无联邦（commit 3f192e7）
 - [ ] `core` 的 rendezvous-client（含 sealed box 离线 notify）
 - [ ] 邀请码端到端流程跑通（CLI 层）
 - [ ] 三平台 CI 跑通 invite/accept
@@ -154,7 +154,7 @@ M0 agent-blind 检查已完成（闭卷重做）。所有 gap 已回填。
   - Q4 (concurrent in-flight requests + response correlation) — ✅ resolved by `decisions/signaling-fifo-no-request-id.md`（commit `4146b95`）
   - Q7 (invite_record deletion criteria: cancel + disconnect cases) — [choice] 实现者可在已知约束（expiry + single-use）下决定，但应记录决策
   - Q8 (reconnect: client re-sends register vs server preserves session) — ✅ resolved by `decisions/reconnect-requires-reregister.md`（commit `4146b95`）
-- [ ] **Verify rendezvous dependencies**：`packages/rendezvous/package.json` 添加 `fastify` + `ws` + `@fastify/websocket`（`facts/rendezvous-tech-stack.md` 已将其标注为 gap："M2 实现时添加"）
+- [x] **Verify rendezvous dependencies**：`packages/rendezvous/package.json` 添加 `fastify` + `ws` + `@fastify/websocket`（`facts/rendezvous-tech-stack.md` 已将其标注为 gap："M2 实现时添加"）（commit 3f192e7）
 
 ## 其他 BACKLOG（不阻塞 M2）
 

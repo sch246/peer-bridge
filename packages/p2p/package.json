@@ -1,0 +1,21 @@
+{
+  "name": "@peer-bridge/p2p",
+  "version": "0.1.0",
+  "private": true,
+  "description": "P2P transport layer — PeerConnection management and DataChannel messaging",
+  "type": "module",
+  "scripts": {
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok"
+  },
+  "dependencies": {
+    "node-datachannel": "0.32.3",
+    "@peer-bridge/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  }
+}

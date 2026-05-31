@@ -80,6 +80,25 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/p2p:
+    dependencies:
+      '@peer-bridge/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      node-datachannel:
+        specifier: 0.32.3
+        version: 0.32.3
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+      tsx:
+        specifier: ^4.22.3
+        version: 4.22.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/p2p-probe:
     dependencies:
       node-datachannel:

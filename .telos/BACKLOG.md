@@ -188,6 +188,7 @@ Scope ledger（详 audit §B，12 项明确不在 M3）作为隐性 scope creep 
 ### Post-M3 BACKLOG（sediment plan §C 出）
 
 - **MC-1** M4 transcripts 与 M3 CLI 文件格式兼容（U-15）— M3 CLI 无 daemon 无 transcript.jsonl。如果 M3 CLI 把文件存在 `~/Downloads/` 不写 transcript，M4 daemon 启动时如何发现和承认这些文件？需在 M4 实施时设计迁移路径。Revisit M4。
+- **MC-7** RoomSession.onRoomMessage 单套接回调的 callback wrapping 模式 — `FileSender` `send()` 期间临时 wrap（恢复 cleanup）；`FileReceiver` 构造时永久 wrap。Phase 7a/7b 初版实现。这是 cross-file impl contract，但 Phase 7b/8 未升级为 multi-subscription API。若 Phase 9 CLI 或 M4 daemon 需要多 transfer 并发，这个模式会 fail ——重设计为多订阅 callback bus，或在 RoomSession 加 type-routed dispatch。临时代码位置：`packages/p2p/src/file-receiver.ts:80, 100`；`packages/p2p/src/file-sender.ts:64, 124`。Revisit Phase 9 或 M4。
 - **MC-2** known_peers `trust:tofu` 在 P2P 连接时的 CLI 行为（D-12）— `facts/known-peers-toml-schema.md` 定义 trust: "tofu"，但 M3 P2P 连接时对 tofu peer 的行为未定义（是否允许 DataChannel 建立？CLI 警告程度？）。Daemon 阶段 (M4) 的长期 tofu 策略应统一。Cross-link: 与 `manual-fingerprint-confirmation-on-accept.md` 的 "manual confirm" 严格度有 tension。Revisit M4。
 - **MC-3** bulk channel 创建失败 → 退化为纯消息连接的正式策略（D-8）— Blind 选了 graceful degradation，但这是 telos 盲区。M4 引入 daemon 后可能有不同的连接降级策略（如自动重试 bulk channel）。Revisit M4。
 - **MC-4** DataChannel 同 PC 内重开 vs 完全重建 PeerConnection 的策略（I-8 + U-13）— Blind 选了 "同 PC 内重开 DataChannel + 文件从头重传"，但 telos 未沉积。与 U-13 (PeerConnection 重连) 关联 — M4 可能需要更完整的重连策略（含 ICE restart）。Revisit M4。

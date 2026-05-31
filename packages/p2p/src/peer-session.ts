@@ -281,6 +281,35 @@ export class PeerSession {
     return this.#bulkDc !== null && this.#bulkOpen;
   }
 
+  // ── Bulk backpressure API (Phase 7b) ──
+
+  /**
+   * Bytes currently buffered in the bulk DataChannel send queue.
+   * Returns 0 if the bulk channel is unavailable.
+   *
+   * node-datachannel 0.32.3: bufferedAmount() is a method, not a property.
+   */
+  get bulkBufferedAmount(): number {
+    return this.#bulkDc?.bufferedAmount() ?? 0;
+  }
+
+  /**
+   * Set the low-watermark threshold for the bulk DataChannel.
+   * When bufferedAmount drops below this threshold, onBulkBufferedAmountLow fires.
+   * No-op if the bulk channel is unavailable.
+   */
+  setBulkBufferedAmountLowThreshold(threshold: number): void {
+    if (this.#bulkDc) {
+      this.#bulkDc.setBufferedAmountLowThreshold(threshold);
+    }
+  }
+
+  /**
+   * Fires once each time bufferedAmount drops below the threshold.
+   * Set by the RoomSession to implement sendBulkWithBackpressure.
+   */
+  onBulkBufferedAmountLow: (() => void) | null = null;
+
   // ── Teardown ──
 
   /**
@@ -390,6 +419,12 @@ export class PeerSession {
   #setupBulkDataChannel(dc: nodeDataChannel.DataChannel): void {
     dc.onOpen(() => {
       this.#bulkOpen = true;
+    });
+
+    dc.onBufferedAmountLow(() => {
+      if (this.onBulkBufferedAmountLow) {
+        this.onBulkBufferedAmountLow();
+      }
     });
 
     dc.onMessage((msg) => {

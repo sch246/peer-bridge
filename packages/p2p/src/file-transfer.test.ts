@@ -17,6 +17,7 @@ import { PeerConnectionManager } from './peer-connection-manager.js';
 import { RoomSession } from './room-session.js';
 import { FileSender } from './file-sender.js';
 import { FileReceiver } from './file-receiver.js';
+import type { RoomFileAbort, RoomMessage } from '@peer-bridge/protocol';
 
 /** Create a temporary file with random content of the given size (bytes). */
 function createTempFile(size: number): { filePath: string; content: Buffer; sha256: Uint8Array } {
@@ -239,6 +240,353 @@ describe('FileSender + FileReceiver', () => {
           'receiver waitForDone must reject',
         );
 
+        fs.rmSync(tmpdir, { recursive: true });
+      } finally {
+        cleanup();
+        try {
+          fs.rmSync(tmpdir, { recursive: true });
+        } catch {
+          /* already cleaned up */
+        }
+      }
+    },
+  );
+
+  // ── Phase 7b tests ──
+
+  it(
+    'backpressure flow control: 10MB random file transfers byte-for-byte with SHA-256 match',
+    { timeout: 30_000 },
+    async () => {
+      const { alice, bob, cleanup } = await setupPair();
+
+      // Set backpressure threshold to 256 KiB on alice's underlying peer session
+      alice.session.setBulkBufferedAmountLowThreshold(256 * 1024);
+
+      const { filePath, content, sha256 } = createTempFile(10 * 1024 * 1024); // 10 MiB
+      const tmpdir = path.dirname(filePath);
+
+      try {
+        const roomId = crypto.randomBytes(16);
+        const senderPeerId = crypto.randomBytes(32);
+
+        // Bob: auto-accept
+        const savePath = path.join(tmpdir, 'received-10mb.bin');
+        const receiver = new FileReceiver(bob);
+        receiver.onFileOffer = async () => ({ accept: true, savePath });
+        const donePromise = receiver.waitForDone();
+
+        // Alice: send with hasBulkChannel guard + backpressure
+        const sender = new FileSender(alice, {
+          filePath,
+          name: 'large-10mb.bin',
+          roomId,
+          senderPeerId,
+          seq: 1,
+        });
+
+        const sendPromise = sender.send();
+
+        await Promise.all([sendPromise, donePromise]);
+
+        // ── Sender assertions ──
+        assert.strictEqual(sender.state, 'done', 'sender must be done');
+        assert.strictEqual(sender.bytesSent, 10 * 1024 * 1024, 'bytesSent = 10 MiB');
+        assert.strictEqual(sender.totalBytes, 10 * 1024 * 1024, 'totalBytes = 10 MiB');
+
+        // ── Receiver assertions ──
+        assert.strictEqual(receiver.state, 'done', 'receiver must be done');
+
+        // ── A20: strongest assertion — 10MB byte-for-byte match ──
+        const received = fs.readFileSync(savePath);
+        assert.strictEqual(received.byteLength, 10 * 1024 * 1024, 'received file size = 10 MiB');
+        assert.deepStrictEqual(
+          received,
+          content,
+          '10 MiB file must match original byte-for-byte under backpressure flow control', // A20: strongest assertion
+        );
+
+        // SHA-256 match
+        const receivedHash = new Uint8Array(crypto.createHash('sha256').update(received).digest());
+        assert.deepStrictEqual(receivedHash, sha256, 'SHA-256 must match for 10 MiB transfer');
+
+        fs.rmSync(tmpdir, { recursive: true });
+      } finally {
+        cleanup();
+        try {
+          fs.rmSync(tmpdir, { recursive: true });
+        } catch {
+          /* already cleaned up */
+        }
+      }
+    },
+  );
+
+  it(
+    'size limit: file_offer >500 MiB triggers file_reject before user callback',
+    { timeout: 15_000 },
+    async () => {
+      const { alice, bob, cleanup } = await setupPair();
+
+      try {
+        const roomId = crypto.randomBytes(16);
+
+        // Bob: receiver with onFileOffer that should NOT be called
+        let onFileOfferCalled = false;
+        const receiver = new FileReceiver(bob);
+        receiver.onFileOffer = async () => {
+          onFileOfferCalled = true;
+          return { accept: true, savePath: '/tmp/never-used' };
+        };
+
+        const failPromise = receiver.waitForDone().catch((err: Error) => err.message);
+
+        // Collect file_reject on alice side
+        let rejectReceived: string | null = null;
+        const originalHandler = alice.onRoomMessage;
+        alice.onRoomMessage = (msg: RoomMessage) => {
+          if (msg.type === 'room:file_reject') {
+            rejectReceived = (msg as { reason: string }).reason;
+          }
+          originalHandler?.(msg);
+        };
+
+        // Alice: send a file_offer with size >500 MiB directly on control channel
+        // (bypass FileSender since FileSender computes real file size from fs.stat)
+        const fakeFileId = crypto.randomUUID();
+        alice.send({
+          type: 'room:file_offer',
+          room_id: roomId,
+          file_id: fakeFileId,
+          sender_peer_id: crypto.randomBytes(32),
+          name: 'giant-file.bin',
+          size: 600 * 1024 * 1024, // 600 MiB
+          sha256: crypto.randomBytes(32),
+          seq: 1,
+          ts: Date.now(),
+        });
+
+        // Wait for the reject to propagate
+        for (let i = 0; i < 50; i++) {
+          if (rejectReceived) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+
+        // Assertions
+        const failReason = await failPromise;
+        assert.strictEqual(failReason, 'file_too_large', 'receiver must fail with file_too_large');
+        assert.strictEqual(receiver.state, 'failed', 'receiver state must be failed');
+        assert.strictEqual(
+          rejectReceived,
+          'file_too_large',
+          'alice must receive file_reject with reason file_too_large',
+        );
+        assert.strictEqual(onFileOfferCalled, false, 'onFileOffer callback must NOT be called');
+
+        // Cleanup
+        alice.onRoomMessage = originalHandler;
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
+  it(
+    'chunk gap: missing seq_num triggers file_abort and deletes .part',
+    { timeout: 15_000 },
+    async () => {
+      const { alice, bob, cleanup } = await setupPair();
+
+      try {
+        const roomId = crypto.randomBytes(16);
+        const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'pb-test-'));
+
+        // Bob: auto-accept
+        const savePath = path.join(tmpdir, 'received-gap.bin');
+        const receiver = new FileReceiver(bob);
+        receiver.onFileOffer = async () => ({ accept: true, savePath });
+        const failPromise = receiver.waitForDone().catch((err: Error) => err.message);
+
+        // Collect file_abort on alice side
+        let abortReceived: RoomFileAbort | null = null;
+        const originalHandler = alice.onRoomMessage;
+        alice.onRoomMessage = (msg: RoomMessage) => {
+          if (msg.type === 'room:file_abort') {
+            abortReceived = msg as RoomFileAbort;
+          }
+          originalHandler?.(msg);
+        };
+
+        // Alice: send file_offer
+        const fileId = crypto.randomUUID();
+        alice.send({
+          type: 'room:file_offer',
+          room_id: roomId,
+          file_id: fileId,
+          sender_peer_id: crypto.randomBytes(32),
+          name: 'gap-test.bin',
+          size: 256 * 1024,
+          sha256: crypto.randomBytes(32), // won't match — abort happens first
+          seq: 1,
+          ts: Date.now(),
+        });
+
+        // Wait for file_accept
+        await new Promise((r) => setTimeout(r, 100));
+        if (receiver.state !== 'receiving') {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+
+        // Send chunk seq_num=0 (valid first chunk)
+        alice.sendBulk({
+          type: 'room:file_chunk',
+          file_id: fileId,
+          seq_num: 0,
+          data: new Uint8Array(crypto.randomBytes(1024)),
+        });
+
+        // Brief yield to let the receiver process seq_num=0
+        await new Promise((r) => setTimeout(r, 50));
+
+        // Send chunk seq_num=2 (GAP — should be 1)
+        alice.sendBulk({
+          type: 'room:file_chunk',
+          file_id: fileId,
+          seq_num: 2,
+          data: new Uint8Array(crypto.randomBytes(1024)),
+        });
+
+        // Wait for abort to propagate
+        for (let i = 0; i < 50; i++) {
+          if (abortReceived) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+
+        // Assertions
+        const failReason = await failPromise;
+        assert.strictEqual(failReason, 'chunk_gap', 'receiver must fail with chunk_gap');
+        assert.strictEqual(receiver.state, 'failed', 'receiver state must be failed');
+        assert.ok(abortReceived, 'alice must receive file_abort');
+        assert.strictEqual(abortReceived!.file_id, fileId, 'abort file_id must match');
+        assert.strictEqual(abortReceived!.reason, 'chunk_gap', 'abort reason must be chunk_gap');
+
+        // .part file must be deleted
+        assert.strictEqual(
+          fs.existsSync(savePath + '.part'),
+          false,
+          '.part file must be deleted after chunk_gap',
+        );
+
+        // Cleanup
+        alice.onRoomMessage = originalHandler;
+        fs.rmSync(tmpdir, { recursive: true });
+      } finally {
+        cleanup();
+        try {
+          fs.rmSync(tmpdir, { recursive: true });
+        } catch {
+          /* already cleaned up */
+        }
+      }
+    },
+  );
+
+  it(
+    'sha256 mismatch: receiver sends file_abort and deletes .part',
+    { timeout: 15_000 },
+    async () => {
+      const { alice, bob, cleanup } = await setupPair();
+
+      const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'pb-test-'));
+
+      try {
+        const roomId = crypto.randomBytes(16);
+
+        // Bob: auto-accept
+        const savePath = path.join(tmpdir, 'received-bad-hash.bin');
+        const receiver = new FileReceiver(bob);
+        receiver.onFileOffer = async () => ({ accept: true, savePath });
+        const failPromise = receiver.waitForDone().catch((err: Error) => err.message);
+
+        // Collect file_abort on alice side
+        let abortReceived: RoomFileAbort | null = null;
+        const originalHandler = alice.onRoomMessage;
+        alice.onRoomMessage = (msg: RoomMessage) => {
+          if (msg.type === 'room:file_abort') {
+            abortReceived = msg as RoomFileAbort;
+          }
+          originalHandler?.(msg);
+        };
+
+        // Alice: send file_offer with a fake random SHA-256 (won't match actual chunks)
+        const fakeSha256 = crypto.randomBytes(32);
+        const realChunkData = crypto.randomBytes(60 * 1024); // 60 KiB
+        const fileId = crypto.randomUUID();
+
+        alice.send({
+          type: 'room:file_offer',
+          room_id: roomId,
+          file_id: fileId,
+          sender_peer_id: crypto.randomBytes(32),
+          name: 'mismatch-test.bin',
+          size: 60 * 1024,
+          sha256: fakeSha256,
+          seq: 1,
+          ts: Date.now(),
+        });
+
+        // Wait for file_accept
+        await new Promise((r) => setTimeout(r, 100));
+        if (receiver.state !== 'receiving') {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+
+        // Send one real chunk (different from the fake SHA-256)
+        alice.sendBulk({
+          type: 'room:file_chunk',
+          file_id: fileId,
+          seq_num: 0,
+          data: realChunkData,
+        });
+
+        // Send file_done
+        alice.send({
+          type: 'room:file_done',
+          file_id: fileId,
+          ts: Date.now(),
+        });
+
+        // Wait for abort to propagate
+        for (let i = 0; i < 50; i++) {
+          if (abortReceived) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+
+        // Assertions
+        const failReason = await failPromise;
+        assert.strictEqual(
+          failReason,
+          'sha256_mismatch',
+          'receiver must fail with sha256_mismatch',
+        );
+        assert.strictEqual(receiver.state, 'failed', 'receiver state must be failed');
+        assert.ok(abortReceived, 'alice must receive file_abort');
+        assert.strictEqual(abortReceived!.file_id, fileId, 'abort file_id must match');
+        assert.strictEqual(
+          abortReceived!.reason,
+          'sha256_mismatch',
+          'abort reason must be sha256_mismatch',
+        );
+
+        // .part file must be deleted
+        assert.strictEqual(
+          fs.existsSync(savePath + '.part'),
+          false,
+          '.part file must be deleted after sha256_mismatch',
+        );
+
+        // Cleanup
+        alice.onRoomMessage = originalHandler;
         fs.rmSync(tmpdir, { recursive: true });
       } finally {
         cleanup();

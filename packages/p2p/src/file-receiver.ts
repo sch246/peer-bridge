@@ -4,13 +4,15 @@
 // decision to caller-supplied callback, writes incoming chunks to a .part file,
 // verifies SHA-256 on file_done, and renames .part to the final path.
 //
-// Scope out (Phase 7b): file_abort on SHA-256 mismatch, chunk gap detection,
-// bufferedAmount backpressure, >500MiB rejection, concurrent transfers.
+// Phase 7b: size >500MiB → file_reject, chunk seq_num gap → file_abort,
+// SHA-256 mismatch → file_abort, peer file_abort listening, .part deletion
+// on all fail paths.
 //
 // Sediment authority:
 //   - .telos/decisions/datachannel-negotiation-two-channels.md (bulk channel)
 //   - .telos/facts/webrtc-datachannel-limits.md (SCTP 64KiB ceiling)
-//   - packages/protocol/src/types.ts (RoomFileOffer/Chunk/Done)
+//   - .telos/decisions/datachannel-error-protocol.md (scenarios #10, #11, #12)
+//   - packages/protocol/src/types.ts (RoomFileOffer/Chunk/Done/Abort/Reject)
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -20,6 +22,7 @@ import type {
   RoomFileReject,
   RoomFileChunk,
   RoomFileDone,
+  RoomFileAbort,
   RoomMessage,
 } from '@peer-bridge/protocol';
 import type { RoomSession } from './room-session.js';
@@ -76,6 +79,12 @@ export class FileReceiver {
 
   // [choice] callback wrapping — see Phase 7a §10
   #originalOnRoomMessage: typeof RoomSession.prototype.onRoomMessage;
+
+  // Chunk sequence tracking (Phase 7b)
+  #expectedSeq = 0;
+
+  // Save path for cleanup on failure
+  #roomId: Uint8Array | null = null;
 
   /**
    * Caller-provided callback for file_offer decisions.
@@ -152,6 +161,9 @@ export class FileReceiver {
       case 'room:file_done':
         await this.#handleFileDone(msg);
         break;
+      case 'room:file_abort':
+        await this.#handleFileAbort(msg);
+        break;
       default:
         // Pass through to original callback (already called after this)
         break;
@@ -164,6 +176,24 @@ export class FileReceiver {
     // [choice] Ignore subsequent offers while a transfer is in progress.
     // Phase 7a does not support concurrent transfers.
     if (this.#state !== 'idle') return;
+
+    // [choice] System-level size check (Phase 7b): reject files >500 MiB
+    // BEFORE invoking the caller's onFileOffer callback.
+    // Per datachannel-error-protocol.md scenario #12.
+    if (msg.size > 500 * 1024 * 1024) {
+      const rejectMsg: RoomFileReject = {
+        type: 'room:file_reject',
+        room_id: msg.room_id,
+        file_id: msg.file_id,
+        reason: 'file_too_large',
+        ts: Date.now(),
+      };
+      this.#roomSession.send(rejectMsg);
+      this.#state = 'failed';
+      this.#failReason = 'file_too_large';
+      this.#doneReject?.(new Error('file_too_large'));
+      return;
+    }
 
     this.#state = 'awaiting_decision';
 
@@ -194,6 +224,8 @@ export class FileReceiver {
         this.#hash = crypto.createHash('sha256');
         this.#savePath = decision.savePath;
         this.#partPath = decision.savePath + '.part';
+        this.#expectedSeq = 0;
+        this.#roomId = msg.room_id;
 
         // Open write stream for partial file
         this.#writeStream = fs.createWriteStream(this.#partPath);
@@ -233,6 +265,18 @@ export class FileReceiver {
     if (this.#state !== 'receiving') return;
     if (msg.file_id !== this.#currentFileId) return; // [choice] silent ignore for stray chunks
     if (!this.#writeStream || !this.#hash) return;
+
+    // Phase 7b: detect chunk seq_num gap (datachannel-error-protocol.md #10)
+    if (msg.seq_num !== this.#expectedSeq) {
+      this.#state = 'failed';
+      this.#failReason = 'chunk_gap';
+      this.#closeWriteStream();
+      this.#sendAbort('chunk_gap');
+      this.#deletePartFile();
+      this.#doneReject?.(new Error('chunk_gap'));
+      return;
+    }
+    this.#expectedSeq++;
 
     this.#writeStream.write(Buffer.from(msg.data));
     this.#hash.update(msg.data);
@@ -277,15 +321,67 @@ export class FileReceiver {
         size: this.#expectedSize,
       });
     } else {
-      // SHA-256 mismatch — fail silently (file_abort sending is Phase 7b)
+      // SHA-256 mismatch — send file_abort and delete .part (Phase 7b)
       this.#state = 'failed';
-      this.#failReason = 'SHA-256 mismatch';
+      this.#failReason = 'sha256_mismatch';
+      this.#sendAbort('sha256_mismatch');
+      await this.#deletePartFile();
+      this.#doneReject?.(new Error('sha256_mismatch'));
+    }
+  }
+
+  // ── file_abort handler (Phase 7b) ──
+
+  async #handleFileAbort(msg: RoomFileAbort): Promise<void> {
+    if (msg.file_id !== this.#currentFileId) return;
+
+    this.#state = 'failed';
+    this.#failReason = `peer_aborted: ${msg.reason}`;
+    this.#closeWriteStream();
+    this.#hash = null;
+    await this.#deletePartFile();
+    this.#doneReject?.(new Error(`peer_aborted: ${msg.reason}`));
+  }
+
+  // ── Helpers (Phase 7b) ──
+
+  /** Close the write stream without finalizing (used on error paths). */
+  #closeWriteStream(): void {
+    if (this.#writeStream) {
+      try {
+        this.#writeStream.end();
+      } catch {
+        /* best-effort */
+      }
+      this.#writeStream = null;
+    }
+  }
+
+  /** Delete the .part file (best-effort). */
+  async #deletePartFile(): Promise<void> {
+    if (this.#partPath) {
       try {
         await fs.promises.unlink(this.#partPath);
       } catch {
-        /* best-effort cleanup */
+        /* best-effort — file may not exist */
       }
-      this.#doneReject?.(new Error('SHA-256 mismatch'));
+      this.#partPath = null;
+    }
+  }
+
+  /** Send a room:file_abort message to the remote peer. */
+  #sendAbort(reason: string): void {
+    try {
+      const abortMsg: RoomFileAbort = {
+        type: 'room:file_abort',
+        room_id: this.#roomId!,
+        file_id: this.#currentFileId!,
+        reason,
+        ts: Date.now(),
+      };
+      this.#roomSession.send(abortMsg);
+    } catch {
+      /* best-effort — connection may already be gone */
     }
   }
 }

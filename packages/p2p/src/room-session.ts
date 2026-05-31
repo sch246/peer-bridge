@@ -68,6 +68,62 @@ export class RoomSession {
     this.#session.sendMessageBinaryBulk(frame);
   }
 
+  /**
+   * Send a CBOR frame on the bulk channel, blocking until bufferedAmount drops
+   * below `opts.threshold` (default 256 KiB) before sending. Rejects after
+   * `opts.timeoutMs` (default 5000) of waiting if the low event never fires.
+   *
+   * Caller MUST check hasBulkChannel before invoking.
+   *
+   * [choice] Serial caller pattern: each invocation overwrites the previous
+   * onBulkBufferedAmountLow callback. Concurrent calls are NOT supported —
+   * FileSender's chunk loop is serial (await each chunk), so this suffices
+   * for Phase 7b.
+   */
+  sendBulkWithBackpressure(
+    msg: RoomMessage,
+    opts?: { threshold?: number; timeoutMs?: number },
+  ): Promise<void> {
+    const threshold = opts?.threshold ?? 256 * 1024; // 256 KiB
+    const timeoutMs = opts?.timeoutMs ?? 5000;
+
+    return new Promise<void>((resolve, reject) => {
+      const doSend = () => {
+        try {
+          this.sendBulk(msg);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      // If buffer is already below threshold, send immediately
+      if (this.#session.bulkBufferedAmount <= threshold) {
+        doSend();
+        return;
+      }
+
+      // Wait for bufferedAmount to drop below threshold
+      let resolved = false;
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          this.#session.onBulkBufferedAmountLow = null;
+          reject(new Error('backpressure_timeout'));
+        }
+      }, timeoutMs);
+
+      this.#session.onBulkBufferedAmountLow = () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          this.#session.onBulkBufferedAmountLow = null;
+          doSend();
+        }
+      };
+    });
+  }
+
   /** Whether the underlying PeerSession has a working bulk DataChannel. */
   get hasBulkChannel(): boolean {
     return this.#session.hasBulkChannel;

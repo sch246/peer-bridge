@@ -4,13 +4,14 @@
 // file_offer on control channel, waits for file_accept, then chunks the
 // file over the bulk channel. Sends file_done on completion.
 //
-// Scope out (Phase 7b): bufferedAmount flow control, file_abort handling,
-// chunk gap detection, retry logic, >500MiB rejection.
+// Phase 7b: bufferedAmount flow control via sendBulkWithBackpressure,
+// hasBulkChannel guard, file_abort handling (listen + send helper).
 //
 // Sediment authority:
 //   - .telos/decisions/datachannel-negotiation-two-channels.md (bulk channel)
 //   - .telos/facts/webrtc-datachannel-limits.md (SCTP 64KiB ceiling)
-//   - packages/protocol/src/types.ts (RoomFileOffer / RoomFileChunk / RoomFileDone)
+//   - .telos/decisions/datachannel-error-protocol.md (scenarios #10, #11, #16)
+//   - packages/protocol/src/types.ts (RoomFileOffer / RoomFileChunk / RoomFileDone / RoomFileAbort)
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -18,6 +19,7 @@ import type {
   RoomFileOffer,
   RoomFileChunk,
   RoomFileDone,
+  RoomFileAbort,
   RoomMessage,
 } from '@peer-bridge/protocol';
 import type { RoomSession } from './room-session.js';
@@ -56,6 +58,9 @@ export class FileSender {
   #sendResolve: (() => void) | null = null;
   #sendReject: ((err: Error) => void) | null = null;
 
+  // Abort flag — set when peer sends file_abort; checked before each chunk
+  #aborted = false;
+
   // [choice] callback wrapping — see Phase 7a §10
   #originalOnRoomMessage: typeof RoomSession.prototype.onRoomMessage = null;
 
@@ -87,14 +92,21 @@ export class FileSender {
 
   /**
    * Start the file transfer. Computes SHA-256, sends file_offer, and waits
-   * for the remote peer to accept. Then chunks the file over the bulk channel.
+   * for the remote peer to accept. Then chunks the file over the bulk channel
+   * with backpressure flow control.
    *
    * Resolves when file_done has been sent. Rejects on reject, read error,
-   * or send failure.
+   * backpressure timeout, peer abort, or send failure.
    */
   send(): Promise<void> {
     if (this.#state !== 'idle') {
       return Promise.reject(new Error('FileSender already started'));
+    }
+
+    // [choice] hasBulkChannel guard — fail early if bulk unavailable.
+    // Graceful degrade (use control channel instead) deferred to Phase 9+.
+    if (!this.#roomSession.hasBulkChannel) {
+      return Promise.reject(new Error('Bulk channel not available'));
     }
 
     this.#state = 'awaiting_accept';
@@ -163,12 +175,22 @@ export class FileSender {
 
   /**
    * Handle incoming control-channel messages during the transfer.
-   * Only file_accept and file_reject are relevant; everything else
-   * passes through to the original callback (if any).
+   * Only file_accept, file_reject, and file_abort are relevant;
+   * everything else passes through to the original callback (if any).
    */
   #handleMessage(msg: RoomMessage): void {
+    // file_abort can arrive in any active state (awaiting_accept, sending)
+    if (msg.type === 'room:file_abort' && msg.file_id === this.#fileId) {
+      this.#aborted = true;
+      this.#state = 'failed';
+      const reason = (msg as RoomFileAbort).reason || 'unknown';
+      this.#cleanup();
+      this.#sendReject?.(new Error(`File aborted by peer: ${reason}`));
+      return;
+    }
+
     if (this.#state !== 'awaiting_accept') {
-      return; // Not expecting any control messages once sending starts
+      return; // Not expecting file_accept / file_reject once sending starts
     }
 
     if (msg.type === 'room:file_accept' && msg.file_id === this.#fileId) {
@@ -186,7 +208,9 @@ export class FileSender {
   }
 
   /**
-   * Read the file in chunks and send each over the bulk channel.
+   * Read the file in chunks and send each over the bulk channel with
+   * backpressure flow control. Checks #aborted before each chunk.
+   *
    * Sends file_done on the control channel after the last chunk.
    */
   async #startChunking(): Promise<void> {
@@ -198,6 +222,14 @@ export class FileSender {
     try {
       let position = 0;
       while (position < this.#totalBytes) {
+        // Check abort flag before each chunk
+        if (this.#aborted) {
+          this.#state = 'failed';
+          this.#cleanup();
+          this.#sendReject?.(new Error('Transfer aborted by peer'));
+          return;
+        }
+
         const { bytesRead } = await fd.read(buffer, 0, chunkSize, position);
 
         if (bytesRead === 0) break;
@@ -209,7 +241,10 @@ export class FileSender {
           seq_num: seqNum,
           data,
         };
-        this.#roomSession.sendBulk(chunkMsg);
+
+        // Phase 7b: use backpressure-aware send
+        await this.#roomSession.sendBulkWithBackpressure(chunkMsg);
+
         this.#bytesSent += bytesRead;
         seqNum++;
         position += bytesRead;
@@ -227,15 +262,43 @@ export class FileSender {
       this.#cleanup();
       this.#sendResolve?.();
     } catch (err) {
-      this.#state = 'failed';
+      // Only transition to failed if we're not already there
+      if (this.#state !== 'failed') {
+        this.#state = 'failed';
+      }
       this.#cleanup();
-      this.#sendReject?.(err as Error);
+      if (err instanceof Error && err.message === 'backpressure_timeout') {
+        // Send file_abort to peer before rejecting
+        this.#sendAbort('backpressure_timeout');
+        this.#sendReject?.(err);
+      } else {
+        this.#sendReject?.(err as Error);
+      }
     } finally {
       try {
         await fd.close();
       } catch {
         /* best-effort */
       }
+    }
+  }
+
+  /**
+   * Send a room:file_abort message to the remote peer on the control channel.
+   * Best-effort — failures are silently swallowed (the connection may be dead).
+   */
+  #sendAbort(reason: string): void {
+    try {
+      const abortMsg: RoomFileAbort = {
+        type: 'room:file_abort',
+        room_id: this.#config.roomId,
+        file_id: this.#fileId,
+        reason,
+        ts: Date.now(),
+      };
+      this.#roomSession.send(abortMsg);
+    } catch {
+      /* best-effort — connection may already be gone */
     }
   }
 

@@ -1,7 +1,9 @@
-// P2P transport type definitions — Phase 1: skeleton types for happy-path only.
+// P2P transport type definitions.
+//
+// Phase 4: PeerSessionState now includes 'failed' for non-recoverable connection errors.
 //
 // Sediment authority:
-//   - .telos/facts/peerconnection-lifecycle.md (5 states: idle→connecting→connected→closing→closed)
+//   - .telos/facts/peerconnection-lifecycle.md (7 states incl. failed)
 //   - .telos/facts/default-ice-servers.md (Phase 1 iceServers: [])
 //   - .telos/decisions/m3-cli-p2p-bypass-daemon.md (P2PConfig in packages/p2p)
 
@@ -21,8 +23,25 @@ export const DEFAULT_P2P_CONFIG: P2PConfig = {
 /**
  * PeerSession lifecycle states.
  *
- * Phase 1 surface: idle → connecting → connected → closing → closed.
- * Transferring and failed omitted — they belong to Phase 2 (file transfer)
- * and Phase 3 (error paths) respectively.
+ *   idle  →  connecting  →  connected  →  closing  →  closed
+ *                      ↘  failed     ↗
+ *
+ * 'failed' is entered when:
+ *   - Ed25519 signature verification fails (signature_invalid)
+ *   - peer_id doesn't match expected remote (peer_id_mismatch)
+ *   - timestamp outside validity window (timestamp_invalid)
+ *   - SDP a=fingerprint ≠ envelope fingerprint (sdp_fingerprint_mismatch)
+ *   - Envelope missing fields or malformed (schema_invalid)
+ *   - PeerConnection connectionState transitions to 'failed' (pc_connection_failed)
+ *   - startOffer / waitForConnected timeout (connect_timeout)
+ *
+ * From 'failed' the session can be explicitly close()'d (failed → closing → closed)
+ * to release resources.
  */
-export type PeerSessionState = 'idle' | 'connecting' | 'connected' | 'closing' | 'closed';
+export type PeerSessionState =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'closing'
+  | 'closed'
+  | 'failed';

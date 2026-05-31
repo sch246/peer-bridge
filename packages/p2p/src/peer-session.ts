@@ -1,15 +1,18 @@
 // PeerSession — wraps a single node-datachannel PeerConnection plus one control DataChannel.
 //
-// Phase 1: happy path only. No Ed25519 verify, no fingerprint check, no bulk channel,
-// no idle timeout, no error recovery.
+// Phase 4: error surface — onError callback + fail() method + PC connectionState=failed
+// listener + typed timeout reject. Verification-gate failures (rendezvous-relay) and
+// PC-level failures are now caller-observable via PeerSessionError.
 //
 // Sediment authority:
-//   - .telos/facts/peerconnection-lifecycle.md (5-state FSM)
+//   - .telos/facts/peerconnection-lifecycle.md (7-state FSM incl. failed)
 //   - .telos/decisions/datachannel-negotiation-two-channels.md (control channel, non-negotiated)
-//   - .telos/facts/p2p-signal-payload-format.md (Phase 1 uses in-memory object relay, no JSON)
+//   - .telos/decisions/datachannel-error-protocol.md (scenarios #1, #2, #7–#9)
 
 import nodeDataChannel from 'node-datachannel';
 import type { P2PConfig, PeerSessionState } from './types.js';
+import { PeerSessionError } from './errors.js';
+import type { PeerSessionErrorReason } from './errors.js';
 
 /** Callback for outgoing SDP descriptions (offer/answer). */
 export type LocalDescriptionCallback = (sdp: string, type: 'offer' | 'answer') => void;
@@ -22,6 +25,9 @@ export type MessageCallback = (message: string) => void;
 
 /** Callback for state transitions. */
 export type StateChangeCallback = (state: PeerSessionState) => void;
+
+/** Callback for non-recoverable session failures. */
+export type ErrorCallback = (err: PeerSessionError) => void;
 
 /**
  * A PeerSession owns one PeerConnection and, once connected, one control DataChannel.
@@ -62,6 +68,9 @@ export class PeerSession {
   /** Fires on every state transition. */
   onStateChange: StateChangeCallback | null = null;
 
+  /** Fires when the session enters 'failed' state. Receives a typed PeerSessionError. */
+  onError: ErrorCallback | null = null;
+
   // ── Connection promise plumbing ──
 
   #connectResolve: (() => void) | null = null;
@@ -84,6 +93,13 @@ export class PeerSession {
     this.#pc.onLocalCandidate((candidate, mid) => {
       if (this.onLocalCandidate) {
         this.onLocalCandidate(candidate, mid);
+      }
+    });
+
+    // ── PeerConnection state monitoring ──
+    this.#pc.onStateChange((state: string) => {
+      if (state === 'failed' && this.#state !== 'failed' && this.#state !== 'closed') {
+        this.fail('pc_connection_failed');
       }
     });
 
@@ -129,7 +145,7 @@ export class PeerSession {
 
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`PeerSession startOffer timed out after ${timeout}ms`));
+        this.fail('connect_timeout');
       }, timeout);
 
       const done = () => {
@@ -137,13 +153,13 @@ export class PeerSession {
         resolve();
       };
 
-      const fail = (err: Error) => {
+      const failFn = (err: Error) => {
         clearTimeout(timer);
         reject(err);
       };
 
       this.#connectResolve = done;
-      this.#connectReject = fail;
+      this.#connectReject = failFn;
 
       // Create control DataChannel — this triggers SDP negotiation.
       const dc = this.#pc.createDataChannel('control');
@@ -163,7 +179,7 @@ export class PeerSession {
 
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`PeerSession waitForConnected timed out after ${timeout}ms`));
+        this.fail('connect_timeout');
       }, timeout);
 
       const done = () => {
@@ -171,13 +187,13 @@ export class PeerSession {
         resolve();
       };
 
-      const fail = (err: Error) => {
+      const failFn = (err: Error) => {
         clearTimeout(timer);
         reject(err);
       };
 
       this.#connectResolve = done;
-      this.#connectReject = fail;
+      this.#connectReject = failFn;
 
       // If the DataChannel already arrived (race condition), check it.
       if (this.#controlDc) {
@@ -203,9 +219,53 @@ export class PeerSession {
 
   // ── Teardown ──
 
+  /**
+   * Transition the session to 'failed' with the given reason.
+   *
+   * Emits onError, rejects any pending startOffer/waitForConnected promise,
+   * and closes the underlying PeerConnection.
+   *
+   * Idempotent — subsequent calls are no-ops once in 'failed' or 'closed'.
+   */
+  fail(reason: PeerSessionErrorReason): void {
+    if (this.#state === 'failed' || this.#state === 'closed') return;
+
+    const err = new PeerSessionError(reason);
+    this.#transition('failed');
+
+    // Emit onError callback (best-effort — user callback may throw)
+    if (this.onError) {
+      try {
+        this.onError(err);
+      } catch {
+        /* user callback threw — swallow */
+      }
+    }
+
+    // Reject pending connect promise so callers don't hang
+    if (this.#connectReject) {
+      this.#connectReject(err);
+      this.#connectResolve = null;
+      this.#connectReject = null;
+    }
+
+    // Close the underlying PeerConnection (best-effort — it may already be dead)
+    try {
+      this.#pc.close();
+    } catch {
+      /* already closed */
+    }
+  }
+
   /** Close the session: close DataChannel, then close PeerConnection. */
   close(): void {
-    this.#transition('closing');
+    // Allow explicit cleanup from any state (including 'failed').
+    if (this.#state !== 'failed') {
+      this.#transition('closing');
+    } else {
+      // From 'failed' the PC is already closed; just move through closing → closed.
+      this.#transition('closing');
+    }
     try {
       this.#controlDc?.close();
     } catch {

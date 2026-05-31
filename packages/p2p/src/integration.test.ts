@@ -13,8 +13,10 @@ import { generateKeyPair, getPeerId, initCrypto, RendezvousClient } from '@peer-
 import { createServer } from '../../rendezvous/src/server.js';
 import type { ServerDeps } from '../../rendezvous/src/server.js';
 import { PeerConnectionManager } from './peer-connection-manager.js';
+import { PeerSession } from './peer-session.js';
 import { wireSessionToRendezvous } from './rendezvous-relay.js';
 import type { RelayAuthOptions } from './rendezvous-relay.js';
+import { PeerSessionError } from './errors.js';
 
 describe('Rendezvous-relay integration', () => {
   let serverHandle: Awaited<ReturnType<typeof createServer>>;
@@ -149,7 +151,7 @@ describe('Rendezvous-relay integration', () => {
 
   // ── Forged signature: Mallory signs as Alice → rejected by Bob ─────────
 
-  it('rejects forged signature', { timeout: 15_000 }, async () => {
+  it('rejects forged signature and surfaces error via onError', { timeout: 15_000 }, async () => {
     // 1. Generate keypairs
     const aliceKp = await generateKeyPair();
     const malloryKp = await generateKeyPair();
@@ -178,17 +180,18 @@ describe('Rendezvous-relay integration', () => {
     const aliceSession = aliceMgr.createOutgoing();
     const bobSession = bobMgr.createIncoming();
 
-    // Track Bob's state transitions
+    // Track Bob's state transitions and errors
     const bobStates: string[] = [];
     bobSession.onStateChange = (s) => bobStates.push(s);
+    let bobError: PeerSessionError | null = null;
+    bobSession.onError = (err) => {
+      bobError = err;
+    };
 
     // 4. Alice uses Mallory's keyPair but claims alicePeerId as localPeerId
-    //    → envelope is signed with Mallory's secret key,
-    //    → Bob sees alicePeerId as peer_id and verifies with aliceKp.publicKey
-    //    → verification FAILS (wrong key)
     const aliceAuth: RelayAuthOptions = {
-      keyPair: malloryKp, // ← wrong key!
-      localPeerId: alicePeerId, // ← claims to be Alice
+      keyPair: malloryKp,
+      localPeerId: alicePeerId,
       expectedRemotePeerId: bobPeerId,
     };
     const bobAuth: RelayAuthOptions = {
@@ -201,19 +204,29 @@ describe('Rendezvous-relay integration', () => {
     const aliceUnsub = wireSessionToRendezvous(aliceSession, aliceClient, bobPeerId, aliceAuth);
     const bobUnsub = wireSessionToRendezvous(bobSession, bobClient, alicePeerId, bobAuth);
 
-    // 6. Alice starts offer → offer is sent but Bob rejects signature
+    // 6. Alice starts offer — Bob rejects signature → Bob enters 'failed'
+    //    Alice times out because Bob never answers.
     await assert.rejects(
       () => aliceSession.startOffer(5000),
-      /timed out/,
-      'Alice offer should time out because Bob never answers (signature rejected)',
+      /PeerSession error/,
+      'Alice offer should reject because Bob rejected the forged signature',
     );
 
-    // 7. Bob must never have left 'idle' state
+    // 7. Bob must have entered 'failed' state with signature_invalid
     assert.strictEqual(
       bobSession.state,
-      'idle',
-      'Bob session should remain idle because forged signature was rejected',
+      'failed',
+      'Bob session should be failed because forged signature was rejected',
     );
+    assert.ok(bobError !== null, 'Bob should have received an onError callback');
+    const bobErr = bobError as PeerSessionError;
+    assert.strictEqual(
+      bobErr.reason,
+      'signature_invalid',
+      'Bob error reason should be signature_invalid',
+    );
+    assert.strictEqual(bobErr.code, 1);
+    assert.ok(bobErr instanceof PeerSessionError);
 
     // 8. Cleanup
     aliceUnsub();
@@ -222,5 +235,126 @@ describe('Rendezvous-relay integration', () => {
     bobSession.close();
     aliceClient.disconnect();
     bobClient.disconnect();
+  });
+
+  // ── PeerSessionError constructor ────────────────────────────────────────
+
+  it('PeerSessionError has correct shape', () => {
+    const err = new PeerSessionError('signature_invalid', 'custom message');
+    assert.strictEqual(err.reason, 'signature_invalid');
+    assert.strictEqual(err.code, 1);
+    assert.strictEqual(err.message, 'custom message');
+    assert.strictEqual(err.name, 'PeerSessionError');
+    assert.ok(err instanceof Error);
+  });
+
+  it('PeerSessionError has default message from reason', () => {
+    const err = new PeerSessionError('connect_timeout');
+    assert.ok(err.message.includes('connect_timeout'));
+  });
+
+  // ── PeerSession fail() method ──────────────────────────────────────────
+
+  it('fail() transitions to failed and emits onError', async () => {
+    const session = new PeerSession({ iceServers: [], connectTimeoutMs: 5000 }, 'test');
+
+    assert.strictEqual(session.state, 'idle');
+
+    const states: string[] = [];
+    session.onStateChange = (s) => states.push(s);
+
+    let caughtError: PeerSessionError | null = null;
+    session.onError = (err) => {
+      caughtError = err;
+    };
+
+    session.fail('pc_connection_failed');
+
+    assert.strictEqual(session.state, 'failed');
+    assert.deepStrictEqual(states, ['failed']);
+    assert.ok(caughtError !== null, 'onError should have been called');
+    const err = caughtError as PeerSessionError;
+    assert.strictEqual(err.reason, 'pc_connection_failed');
+    assert.strictEqual(err.code, 1);
+
+    session.close();
+  });
+
+  it('fail() is idempotent', async () => {
+    const session = new PeerSession({ iceServers: [], connectTimeoutMs: 5000 }, 'test');
+
+    let errorCount = 0;
+    session.onError = () => {
+      errorCount++;
+    };
+
+    session.fail('schema_invalid');
+    assert.strictEqual(errorCount, 1);
+    assert.strictEqual(session.state, 'failed');
+
+    // Second call should be a no-op
+    session.fail('signature_invalid');
+    assert.strictEqual(errorCount, 1, 'onError should not fire twice');
+    assert.strictEqual(session.state, 'failed');
+
+    session.close();
+  });
+
+  it('fail() rejects pending startOffer promise with PeerSessionError', async () => {
+    const session = new PeerSession({ iceServers: [], connectTimeoutMs: 5000 }, 'test');
+
+    // Wire a no-op local description to avoid errors
+    session.onLocalDescription = () => {};
+    session.onLocalCandidate = () => {};
+
+    const startPromise = session.startOffer(5000);
+
+    // Fail before connected
+    session.fail('connect_timeout');
+
+    await assert.rejects(
+      () => startPromise,
+      (err: unknown) => {
+        assert.ok(err instanceof PeerSessionError);
+        assert.strictEqual((err as PeerSessionError).reason, 'connect_timeout');
+        return true;
+      },
+    );
+
+    session.close();
+  });
+
+  it('fail() rejects pending waitForConnected promise with PeerSessionError', async () => {
+    const session = new PeerSession({ iceServers: [], connectTimeoutMs: 5000 }, 'test');
+
+    const waitPromise = session.waitForConnected(5000);
+
+    session.fail('pc_connection_failed');
+
+    await assert.rejects(
+      () => waitPromise,
+      (err: unknown) => {
+        assert.ok(err instanceof PeerSessionError);
+        assert.strictEqual((err as PeerSessionError).reason, 'pc_connection_failed');
+        return true;
+      },
+    );
+
+    session.close();
+  });
+
+  it('close() from failed state works', async () => {
+    const session = new PeerSession({ iceServers: [], connectTimeoutMs: 5000 }, 'test');
+
+    session.fail('peer_id_mismatch');
+    assert.strictEqual(session.state, 'failed');
+
+    const statesAfterFail: string[] = [];
+    session.onStateChange = (s) => statesAfterFail.push(s);
+
+    session.close();
+
+    assert.strictEqual(session.state, 'closed');
+    assert.deepStrictEqual(statesAfterFail, ['closing', 'closed']);
   });
 });

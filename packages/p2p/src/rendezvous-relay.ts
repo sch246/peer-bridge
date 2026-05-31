@@ -158,6 +158,7 @@ export function wireSessionToRendezvous(
       msg = JSON.parse(rawPayload) as SignalPayload;
     } catch {
       console.warn(`[rendezvous-relay] Failed to parse signal_in payload from ${from}`);
+      session.fail('schema_invalid');
       return;
     }
 
@@ -177,6 +178,7 @@ export function wireSessionToRendezvous(
           typeof oa.nonce !== 'string'
         ) {
           console.warn(`[rendezvous-relay] ${oa.subtype} from ${from} missing required fields`);
+          session.fail('schema_invalid');
           return;
         }
 
@@ -186,6 +188,7 @@ export function wireSessionToRendezvous(
             `[rendezvous-relay] ${oa.subtype} from ${from}: ` +
               `peer_id "${oa.peer_id}" does not match expected "${auth.expectedRemotePeerId}"`,
           );
+          session.fail('peer_id_mismatch');
           return;
         }
 
@@ -195,6 +198,7 @@ export function wireSessionToRendezvous(
             `[rendezvous-relay] ${oa.subtype} from ${from}: ` +
               `timestamp ${oa.timestamp} outside validity window`,
           );
+          session.fail('timestamp_invalid');
           return;
         }
 
@@ -205,6 +209,7 @@ export function wireSessionToRendezvous(
           if (fpBytes.length !== 32) throw new Error('short');
         } catch {
           console.warn(`[rendezvous-relay] ${oa.subtype} from ${from}: invalid fingerprint hex`);
+          session.fail('schema_invalid');
           return;
         }
 
@@ -213,6 +218,7 @@ export function wireSessionToRendezvous(
           sigBytes = new Uint8Array(Buffer.from(oa.signature, 'base64'));
         } catch {
           console.warn(`[rendezvous-relay] ${oa.subtype} from ${from}: invalid signature base64`);
+          session.fail('schema_invalid');
           return;
         }
 
@@ -221,6 +227,7 @@ export function wireSessionToRendezvous(
           nonceBytes = new Uint8Array(Buffer.from(oa.nonce, 'base64'));
         } catch {
           console.warn(`[rendezvous-relay] ${oa.subtype} from ${from}: invalid nonce base64`);
+          session.fail('schema_invalid');
           return;
         }
 
@@ -240,6 +247,7 @@ export function wireSessionToRendezvous(
             );
             // Discard buffered candidates — they matched the rejected offer/answer
             pendingIceCandidates = [];
+            session.fail('signature_invalid');
             return;
           }
 
@@ -253,6 +261,7 @@ export function wireSessionToRendezvous(
                 `failed to extract SDP fingerprint: ${(err as Error).message}`,
             );
             pendingIceCandidates = [];
+            session.fail('schema_invalid');
             return;
           }
           if (Buffer.from(sdpFp).toString('hex') !== oa.fingerprint) {
@@ -261,6 +270,7 @@ export function wireSessionToRendezvous(
                 'SDP fingerprint does not match envelope fingerprint',
             );
             pendingIceCandidates = [];
+            session.fail('sdp_fingerprint_mismatch');
             return;
           }
 

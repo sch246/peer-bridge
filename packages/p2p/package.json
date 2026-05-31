@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "node-datachannel": "0.32.3",
+    "@peer-bridge/core": "workspace:*",
     "@peer-bridge/protocol": "workspace:*"
   },
   "devDependencies": {
+    "@peer-bridge/rendezvous": "workspace:*",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"

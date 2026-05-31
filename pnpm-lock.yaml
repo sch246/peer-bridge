@@ -82,6 +82,9 @@ importers:
 
   packages/p2p:
     dependencies:
+      '@peer-bridge/core':
+        specifier: workspace:*
+        version: link:../core
       '@peer-bridge/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -89,6 +92,9 @@ importers:
         specifier: 0.32.3
         version: 0.32.3
     devDependencies:
+      '@peer-bridge/rendezvous':
+        specifier: workspace:*
+        version: link:../rendezvous
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1

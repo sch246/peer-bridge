@@ -183,7 +183,7 @@ Scope ledger（详 audit §B，12 项明确不在 M3）作为隐性 scope creep 
 
 ### M3 启动 sediment 完结
 
-6 个 block-M3-start telos 文件全部落地 (Phases 1–4，commit `2b49c4d` → `14c2e62` → `0ec442b` → `d862be4`)。C-1 真矛盾在 Phase 1 以 amend `per-sender-seq-numbering.md` + `docs/protocol.md` §5 关闭。264/264 测试全绿。**M3 可启动实施。**
+6 个 block-M3-start telos 文件全部落地 (Phases 1–4，commit `2b49c4d` → `14c2e62` → `0ec442b` → `d862be4`)。C-1 真矛盾在 Phase 1 **仅在文档层 (per-sender-seq-numbering.md + docs/protocol.md §5) amend**；commit `2b49c4d` 明说 types.ts 代码侧变更 deferred 到 M3 实施。此 deferred task 未被任何 tracker 记录，Phases 7a/7b/8 未接起 (实现侧选了不带 seq 的形状)。该 drift 的 premise 是否仍然成立，现以 `tensions/roomfiledone-doc-types-drift.md` 记录，M4 daemon 阶段 resolve。264/264 测试全绿。**M3 可启动实施。**
 
 ### Post-M3 BACKLOG（sediment plan §C 出）
 

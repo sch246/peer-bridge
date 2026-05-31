@@ -1,7 +1,19 @@
+---
+id: per-sender-seq-numbering
+kind: decision
+status: questioned
+since: 2025-01
+revised: 2026-05-31
+supersedes: none
+---
+
 # Decision: Per-Sender Sequence Numbers
 
-> status: decided | date: 2025-01
-> supersedes: none
+> Note (2026-05-31): the inclusion of `room:file_done` and `room:file_abort` in
+> the seq-bearing list (line 39 below) is currently the Target of an open
+> unary tension. See [tensions/roomfiledone-doc-types-drift](../tensions/roomfiledone-doc-types-drift.md).
+> The rest of this decision (msg + file_offer seq semantics, persistence rules,
+> resync flow) remains in force.
 
 ## Context
 

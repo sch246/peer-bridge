@@ -42,6 +42,7 @@ known_peers.toml
 
 # Working drafts (agent-blind reports, backfill plans — repo root only)
 /m2-*.md
+/m3-*.md
 
 # Windows artifacts (bash redirect bug)
 nul

@@ -20,8 +20,11 @@ export type LocalDescriptionCallback = (sdp: string, type: 'offer' | 'answer') =
 /** Callback for outgoing ICE candidates. */
 export type LocalCandidateCallback = (candidate: string, mid: string) => void;
 
-/** Callback for incoming control-channel messages. */
+/** Callback for incoming control-channel string messages. */
 export type MessageCallback = (message: string) => void;
+
+/** Callback for incoming control-channel binary messages. */
+export type BinaryMessageCallback = (data: Uint8Array) => void;
 
 /** Callback for state transitions. */
 export type StateChangeCallback = (state: PeerSessionState) => void;
@@ -62,8 +65,11 @@ export class PeerSession {
 
   // ── Application callbacks ──
 
-  /** Fires when the control DataChannel receives a message. */
+  /** Fires when the control DataChannel receives a string message. */
   onMessage: MessageCallback | null = null;
+
+  /** Fires when the control DataChannel receives a binary message. */
+  onBinaryMessage: BinaryMessageCallback | null = null;
 
   /** Fires on every state transition. */
   onStateChange: StateChangeCallback | null = null;
@@ -217,6 +223,14 @@ export class PeerSession {
     this.#controlDc.sendMessage(data);
   }
 
+  /** Send a binary message (CBOR frame) on the control DataChannel. */
+  sendMessageBinary(data: Uint8Array): void {
+    if (!this.#controlDc || this.#state !== 'connected') {
+      throw new Error('Cannot send binary message: PeerSession is not connected');
+    }
+    this.#controlDc.sendMessageBinary(data);
+  }
+
   // ── Teardown ──
 
   /**
@@ -300,8 +314,16 @@ export class PeerSession {
     });
 
     dc.onMessage((msg) => {
-      if (this.onMessage) {
-        this.onMessage(String(msg));
+      if (typeof msg === 'string') {
+        if (this.onMessage) {
+          this.onMessage(msg);
+        }
+      } else {
+        // Buffer or ArrayBuffer → route to binary callback
+        if (this.onBinaryMessage) {
+          const data = msg instanceof Uint8Array ? msg : new Uint8Array(msg.buffer ?? msg);
+          this.onBinaryMessage(data);
+        }
       }
     });
   }

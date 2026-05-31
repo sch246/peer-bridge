@@ -34,18 +34,43 @@ export class RoomSession {
   constructor(session: PeerSession) {
     this.#session = session;
 
-    // Wire the binary message path to decode incoming CBOR frames.
+    // Wire the control binary message path to decode incoming CBOR frames.
     this.#session.onBinaryMessage = (data: Uint8Array) => {
+      if (this.onRoomMessage) {
+        this.onRoomMessage(decodeFrame(data));
+      }
+    };
+
+    // Wire the bulk binary message path — unified into onRoomMessage.
+    // Callers can dispatch on msg.type === 'room:file_chunk' to distinguish.
+    this.#session.onBulkBinaryMessage = (data: Uint8Array) => {
       if (this.onRoomMessage) {
         this.onRoomMessage(decodeFrame(data));
       }
     };
   }
 
-  /** Send a typed RoomMessage as a CBOR-encoded frame. */
+  /** Send a typed RoomMessage as a CBOR-encoded frame on the control channel. */
   send(msg: RoomMessage): void {
     const frame = encodeFrame(msg);
     this.#session.sendMessageBinary(frame);
+  }
+
+  /**
+   * Send a typed RoomMessage as a CBOR-encoded frame on the bulk channel.
+   *
+   * Intended for room:file_chunk messages. Callers should check `hasBulkChannel`
+   * before sending to handle graceful degrade (per
+   * .telos/decisions/datachannel-negotiation-two-channels.md).
+   */
+  sendBulk(msg: RoomMessage): void {
+    const frame = encodeFrame(msg);
+    this.#session.sendMessageBinaryBulk(frame);
+  }
+
+  /** Whether the underlying PeerSession has a working bulk DataChannel. */
+  get hasBulkChannel(): boolean {
+    return this.#session.hasBulkChannel;
   }
 
   /** Underlying PeerSession — passthrough for state / lifecycle. */

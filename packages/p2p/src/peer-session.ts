@@ -1,12 +1,16 @@
 // PeerSession — wraps a single node-datachannel PeerConnection plus one control DataChannel.
 //
-// Phase 4: error surface — onError callback + fail() method + PC connectionState=failed
+// Phase 6: dual-channel support. Adds optional bulk DataChannel for file_chunk transport.
+// Control channel still gates connected state. Bulk failure is graceful — control alone
+// remains usable. Sediment authority for bulk: datachannel-negotiation-two-channels.md.
+//
+// Phase 4 lineage: error surface — onError callback + fail() method + PC connectionState=failed
 // listener + typed timeout reject. Verification-gate failures (rendezvous-relay) and
-// PC-level failures are now caller-observable via PeerSessionError.
+// PC-level failures are caller-observable via PeerSessionError.
 //
 // Sediment authority:
 //   - .telos/facts/peerconnection-lifecycle.md (7-state FSM incl. failed)
-//   - .telos/decisions/datachannel-negotiation-two-channels.md (control channel, non-negotiated)
+//   - .telos/decisions/datachannel-negotiation-two-channels.md (control + bulk, non-negotiated)
 //   - .telos/decisions/datachannel-error-protocol.md (scenarios #1, #2, #7–#9)
 
 import nodeDataChannel from 'node-datachannel';
@@ -54,6 +58,8 @@ export class PeerSession {
 
   #state: PeerSessionState = 'idle';
   #controlDc: nodeDataChannel.DataChannel | null = null;
+  #bulkDc: nodeDataChannel.DataChannel | null = null;
+  #bulkOpen = false;
 
   // ── Signal relay slots (set by caller) ──
 
@@ -70,6 +76,9 @@ export class PeerSession {
 
   /** Fires when the control DataChannel receives a binary message. */
   onBinaryMessage: BinaryMessageCallback | null = null;
+
+  /** Fires when the bulk DataChannel receives a binary message. */
+  onBulkBinaryMessage: BinaryMessageCallback | null = null;
 
   /** Fires on every state transition. */
   onStateChange: StateChangeCallback | null = null;
@@ -110,9 +119,18 @@ export class PeerSession {
     });
 
     // ── Inbound DataChannel (answerer path) ──
+    // node-datachannel 0.32.3: DataChannel exposes getLabel() method, NOT a `label`
+    // property. Reading `dc.label` returns undefined and silently breaks routing.
     this.#pc.onDataChannel((dc) => {
-      this.#controlDc = dc;
-      this.#setupDataChannel(dc);
+      const label = dc.getLabel();
+      if (label === 'control') {
+        this.#controlDc = dc;
+        this.#setupDataChannel(dc);
+      } else if (label === 'bulk') {
+        this.#bulkDc = dc;
+        this.#setupBulkDataChannel(dc);
+      }
+      // Unknown labels: silently ignore.
     });
   }
 
@@ -171,6 +189,16 @@ export class PeerSession {
       const dc = this.#pc.createDataChannel('control');
       this.#controlDc = dc;
       this.#setupDataChannel(dc);
+
+      // Create bulk DataChannel — graceful degrade per datachannel-negotiation-two-channels.md.
+      // If creation throws, control alone remains usable; caller sees hasBulkChannel=false.
+      try {
+        const bulk = this.#pc.createDataChannel('bulk');
+        this.#bulkDc = bulk;
+        this.#setupBulkDataChannel(bulk);
+      } catch {
+        this.#bulkDc = null;
+      }
     });
   }
 
@@ -231,6 +259,28 @@ export class PeerSession {
     this.#controlDc.sendMessageBinary(data);
   }
 
+  /**
+   * Send a binary message (CBOR file_chunk frame) on the bulk DataChannel.
+   *
+   * Throws if not connected or if the bulk channel is unavailable (failed to
+   * create or never opened). Callers should check `hasBulkChannel` first when
+   * tolerating graceful degrade.
+   */
+  sendMessageBinaryBulk(data: Uint8Array): void {
+    if (this.#state !== 'connected') {
+      throw new Error('Cannot send bulk message: PeerSession is not connected');
+    }
+    if (!this.#bulkDc || !this.#bulkOpen) {
+      throw new Error('Cannot send bulk message: bulk DataChannel is not available');
+    }
+    this.#bulkDc.sendMessageBinary(data);
+  }
+
+  /** Whether the bulk DataChannel was successfully created and opened. */
+  get hasBulkChannel(): boolean {
+    return this.#bulkDc !== null && this.#bulkOpen;
+  }
+
   // ── Teardown ──
 
   /**
@@ -286,6 +336,11 @@ export class PeerSession {
       /* best-effort */
     }
     try {
+      this.#bulkDc?.close();
+    } catch {
+      /* best-effort */
+    }
+    try {
       this.#pc.close();
     } catch {
       /* best-effort */
@@ -324,6 +379,24 @@ export class PeerSession {
           const data = msg instanceof Uint8Array ? msg : new Uint8Array(msg.buffer ?? msg);
           this.onBinaryMessage(data);
         }
+      }
+    });
+  }
+
+  /**
+   * Set up the bulk DataChannel — wires onOpen + onMessage but does NOT drive
+   * PeerSession state transitions. The control channel alone gates `connected`.
+   */
+  #setupBulkDataChannel(dc: nodeDataChannel.DataChannel): void {
+    dc.onOpen(() => {
+      this.#bulkOpen = true;
+    });
+
+    dc.onMessage((msg) => {
+      // Bulk channel is binary-only.
+      if (typeof msg !== 'string' && this.onBulkBinaryMessage) {
+        const data = msg instanceof Uint8Array ? msg : new Uint8Array(msg.buffer ?? msg);
+        this.onBulkBinaryMessage(data);
       }
     });
   }

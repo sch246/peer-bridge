@@ -17,3 +17,7 @@ export { PeerSessionError } from './errors.js';
 export type { PeerSessionErrorReason } from './errors.js';
 export { RoomSession } from './room-session.js';
 export type { RoomMessageCallback } from './room-session.js';
+export { FileSender } from './file-sender.js';
+export type { FileSenderConfig, FileSenderState } from './file-sender.js';
+export { FileReceiver } from './file-receiver.js';
+export type { FileReceiverConfig, FileReceiverState, FileOfferCallback } from './file-receiver.js';

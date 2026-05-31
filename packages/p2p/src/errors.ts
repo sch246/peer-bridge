@@ -19,7 +19,7 @@
  *   - pc_connection_failed  — PeerConnection connectionState → 'failed' (scenario #2 auto)
  *   - connect_timeout       — startOffer / waitForConnected timed out (scenarios #7/#8/#9 merged)
  *
- * Deferred to Phase 5+: hello version, idle timeout, file-transfer abort codes.
+ * Phase 8 adds: hello_version_mismatch, hello_timeout.
  */
 export type PeerSessionErrorReason =
   | 'signature_invalid'
@@ -28,7 +28,9 @@ export type PeerSessionErrorReason =
   | 'sdp_fingerprint_mismatch'
   | 'schema_invalid'
   | 'pc_connection_failed'
-  | 'connect_timeout';
+  | 'connect_timeout'
+  | 'hello_version_mismatch'
+  | 'hello_timeout';
 
 /**
  * Typed error thrown when a PeerSession encounters a non-recoverable failure.

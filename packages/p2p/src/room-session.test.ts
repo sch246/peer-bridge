@@ -4,6 +4,9 @@
 // PeerSession binary path (sendMessageBinary / onBinaryMessage) with
 // encodeFrame / decodeFrame.
 //
+// Phase 8: adds room:hello handshake + version negotiation + capabilities tests.
+// All new tests opt-in via autoHello: true. Existing tests (autoHello: false) unchanged.
+//
 // Run: node --import tsx --test src/room-session.test.ts
 
 import { describe, it } from 'node:test';
@@ -223,6 +226,220 @@ describe('RoomSession CBOR frame transport', () => {
       assert.strictEqual(decoded.sender_peer_id.length, 32, 'sender_peer_id must be 32 bytes');
       assert.deepStrictEqual(decoded.room_id, roomId);
       assert.deepStrictEqual(decoded.sender_peer_id, peerId);
+
+      alicePeer.close();
+      bobPeer.close();
+    },
+  );
+});
+
+// ── Phase 8: room:hello handshake ──
+
+describe('RoomSession room:hello handshake', () => {
+  it(
+    'happy path: both sides autoHello=true, version 0.1.0, ready resolves and remote details populate',
+    { timeout: 15_000 },
+    async () => {
+      const mgr = new PeerConnectionManager({ iceServers: [], connectTimeoutMs: 10_000 });
+
+      const alicePeer = mgr.createOutgoing();
+      const bobPeer = mgr.createIncoming();
+
+      // Mock relay
+      alicePeer.onLocalDescription = (sdp, type) => bobPeer.acceptSignal(sdp, type);
+      bobPeer.onLocalDescription = (sdp, type) => alicePeer.acceptSignal(sdp, type);
+      alicePeer.onLocalCandidate = (candidate, mid) => bobPeer.acceptCandidate(candidate, mid);
+      bobPeer.onLocalCandidate = (candidate, mid) => alicePeer.acceptCandidate(candidate, mid);
+
+      const aliceCaps = { webrtc: true, bulk_transfer: true };
+      const bobCaps = { webrtc: true, bulk_transfer: true, compression: true };
+
+      const alice = new RoomSession(alicePeer, {
+        autoHello: true,
+        localVersion: '0.1.0',
+        localCapabilities: aliceCaps,
+        helloTimeoutMs: 5000,
+      });
+      const bob = new RoomSession(bobPeer, {
+        autoHello: true,
+        localVersion: '0.1.0',
+        localCapabilities: bobCaps,
+        helloTimeoutMs: 5000,
+      });
+
+      let aliceReady = false;
+      let bobReady = false;
+      alice.onReady = () => {
+        aliceReady = true;
+      };
+      bob.onReady = () => {
+        bobReady = true;
+      };
+
+      // Connect
+      await Promise.all([alicePeer.startOffer(10_000), bobPeer.waitForConnected(10_000)]);
+
+      // Wait for both sides' ready promises
+      await Promise.all([alice.ready, bob.ready]);
+
+      // [A20] Strongest assertion: remote details match peer's local config
+      assert.strictEqual(alice.remoteVersion, '0.1.0');
+      assert.deepStrictEqual(
+        alice.remoteCapabilities,
+        bobCaps,
+        'alice should see bob capabilities',
+      );
+      assert.strictEqual(bob.remoteVersion, '0.1.0');
+      assert.deepStrictEqual(
+        bob.remoteCapabilities,
+        aliceCaps,
+        'bob should see alice capabilities',
+      );
+
+      // onReady fires
+      assert.strictEqual(aliceReady, true, 'alice onReady should have fired');
+      assert.strictEqual(bobReady, true, 'bob onReady should have fired');
+
+      // Session still connected
+      assert.strictEqual(alicePeer.state, 'connected');
+      assert.strictEqual(bobPeer.state, 'connected');
+
+      alicePeer.close();
+      bobPeer.close();
+    },
+  );
+
+  it(
+    'major mismatch: alice 1.0.0 vs bob 0.1.0 — both ready reject with version_mismatch',
+    { timeout: 15_000 },
+    async () => {
+      const mgr = new PeerConnectionManager({ iceServers: [], connectTimeoutMs: 10_000 });
+
+      const alicePeer = mgr.createOutgoing();
+      const bobPeer = mgr.createIncoming();
+
+      alicePeer.onLocalDescription = (sdp, type) => bobPeer.acceptSignal(sdp, type);
+      bobPeer.onLocalDescription = (sdp, type) => alicePeer.acceptSignal(sdp, type);
+      alicePeer.onLocalCandidate = (candidate, mid) => bobPeer.acceptCandidate(candidate, mid);
+      bobPeer.onLocalCandidate = (candidate, mid) => alicePeer.acceptCandidate(candidate, mid);
+
+      const alice = new RoomSession(alicePeer, {
+        autoHello: true,
+        localVersion: '1.0.0',
+        helloTimeoutMs: 5000,
+      });
+      const bob = new RoomSession(bobPeer, {
+        autoHello: true,
+        localVersion: '0.1.0',
+        helloTimeoutMs: 5000,
+      });
+
+      // Connect
+      await Promise.all([alicePeer.startOffer(10_000), bobPeer.waitForConnected(10_000)]);
+
+      // Both ready promises should reject with version_mismatch.
+      // Await concurrently to avoid unhandled rejection race.
+      const results = await Promise.allSettled([alice.ready, bob.ready]);
+      for (const result of results) {
+        assert.strictEqual(result.status, 'rejected', 'both sides should reject');
+        assert.ok(
+          (result as PromiseRejectedResult).reason.message.includes('version_mismatch'),
+          `expected version_mismatch, got: ${(result as PromiseRejectedResult).reason.message}`,
+        );
+      }
+
+      // Both sessions end in 'failed' state
+      assert.strictEqual(alicePeer.state, 'failed', 'alice session should be failed');
+      assert.strictEqual(bobPeer.state, 'failed', 'bob session should be failed');
+
+      alicePeer.close();
+      bobPeer.close();
+    },
+  );
+
+  it(
+    'minor mismatch accepted: alice 0.1.0 vs bob 0.2.0 — both ready resolve',
+    { timeout: 15_000 },
+    async () => {
+      const mgr = new PeerConnectionManager({ iceServers: [], connectTimeoutMs: 10_000 });
+
+      const alicePeer = mgr.createOutgoing();
+      const bobPeer = mgr.createIncoming();
+
+      alicePeer.onLocalDescription = (sdp, type) => bobPeer.acceptSignal(sdp, type);
+      bobPeer.onLocalDescription = (sdp, type) => alicePeer.acceptSignal(sdp, type);
+      alicePeer.onLocalCandidate = (candidate, mid) => bobPeer.acceptCandidate(candidate, mid);
+      bobPeer.onLocalCandidate = (candidate, mid) => alicePeer.acceptCandidate(candidate, mid);
+
+      const alice = new RoomSession(alicePeer, {
+        autoHello: true,
+        localVersion: '0.1.0',
+        helloTimeoutMs: 5000,
+      });
+      const bob = new RoomSession(bobPeer, {
+        autoHello: true,
+        localVersion: '0.2.0',
+        helloTimeoutMs: 5000,
+      });
+
+      // Connect
+      await Promise.all([alicePeer.startOffer(10_000), bobPeer.waitForConnected(10_000)]);
+
+      // Both ready should resolve (minor mismatch is tolerated)
+      await Promise.all([alice.ready, bob.ready]);
+
+      // Versions recorded correctly
+      assert.strictEqual(alice.remoteVersion, '0.2.0', 'alice should see bob version 0.2.0');
+      assert.strictEqual(bob.remoteVersion, '0.1.0', 'bob should see alice version 0.1.0');
+
+      // Sessions stay connected
+      assert.strictEqual(alicePeer.state, 'connected');
+      assert.strictEqual(bobPeer.state, 'connected');
+
+      alicePeer.close();
+      bobPeer.close();
+    },
+  );
+
+  it(
+    'hello timeout: alice autoHello=true, bob autoHello=false — alice ready rejects with hello_timeout',
+    { timeout: 15_000 },
+    async () => {
+      const mgr = new PeerConnectionManager({ iceServers: [], connectTimeoutMs: 10_000 });
+
+      const alicePeer = mgr.createOutgoing();
+      const bobPeer = mgr.createIncoming();
+
+      alicePeer.onLocalDescription = (sdp, type) => bobPeer.acceptSignal(sdp, type);
+      bobPeer.onLocalDescription = (sdp, type) => alicePeer.acceptSignal(sdp, type);
+      alicePeer.onLocalCandidate = (candidate, mid) => bobPeer.acceptCandidate(candidate, mid);
+      bobPeer.onLocalCandidate = (candidate, mid) => alicePeer.acceptCandidate(candidate, mid);
+
+      const alice = new RoomSession(alicePeer, {
+        autoHello: true,
+        localVersion: '0.1.0',
+        helloTimeoutMs: 500, // Short timeout for test speed
+      });
+      // Bob: no autoHello — won't send hello in response
+      const bob = new RoomSession(bobPeer);
+
+      // Connect
+      await Promise.all([alicePeer.startOffer(10_000), bobPeer.waitForConnected(10_000)]);
+
+      // Alice's ready should reject with hello_timeout
+      await assert.rejects(
+        () => alice.ready,
+        (err: Error) => {
+          return err.message.includes('hello_timeout');
+        },
+        'alice ready should reject with hello_timeout',
+      );
+
+      // Alice session should be in 'failed' state
+      assert.strictEqual(alicePeer.state, 'failed', 'alice session should be failed');
+
+      // Bob's ready resolves immediately (autoHello: false default)
+      await bob.ready;
 
       alicePeer.close();
       bobPeer.close();

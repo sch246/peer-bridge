@@ -3,6 +3,7 @@ id: peerconnection-lifecycle
 kind: fact
 status: stable
 since: 2026-05
+revised: 2026-05-31
 ---
 
 # Fact: M3 PeerConnection Lifecycle
@@ -94,6 +95,15 @@ stateDiagram-v2
 
 **进入动作**：abort 当前传输，删除 `.part` 文件，CLI 退出码 1。
 
+### connected → failed (M3 Phase 8 新增触发路径)
+
+**触发条件在控制 channel `connected` 后、应用层握手期间**：
+
+- `room:hello` SemVer major 不匹配 → `PeerSession.fail('hello_version_mismatch')`。实现于 `packages/p2p/src/room-session.ts:165` (`autoHello: true` 路径)。遵循 [datachannel-error-protocol](../decisions/datachannel-error-protocol.md) scenario #5：关闭控制 DataChannel、不发其他应用消息、不回复包含 error 字段的 hello（`RoomHello` schema 未预留 error 字段）。
+- 5s 内未收到对端 `room:hello` → `PeerSession.fail('hello_timeout')`。阈值可配为 `RoomSessionOptions.helloTimeoutMs`。
+
+两者均是 `connected` 状态下由 `RoomSession` 主动调用 `PeerSession.fail()` 触发的，走进与 ICE/DTLS 失败同一条 `failed` 状态进入路径。`PeerSessionErrorReason` 类型在 `packages/p2p/src/errors.ts` 包含 `hello_version_mismatch` / `hello_timeout` 两个枚举值。
+
 ### closing → closed
 
 **触发条件**：grace period 到期。
@@ -160,7 +170,7 @@ stateDiagram-v2
 - **不覆盖**: DataChannel-level 状态机（control channel open/close/bufferedAmount、bulk channel 创建失败退化）— 见 Brief #B 协商。
 - **不覆盖**: ICE candidate gathering / restart — 属 WebRTC 内部协议 + M4 daemon 持久连接。
 - **不覆盖**: 文件传输 chunk-level 状态（chunk 序号、SHA-256 增量校验、进度上报频率 N）— M3 实施 brief 处理。
-- **不覆盖**: `room:hello` 版本协商与 capabilities 语义 — 见 `datachannel-error-protocol.md`（Brief #C 待 sediment）。
+- **不覆盖**: `room:hello` capabilities 谈判后什么 feature 可用（如 `bulk_transfer` 谈判后被关闭时应该 fall back 到 control channel 还是拒绝 transfer）——是 Phase 9 CLI 层选择，未 sediment。major mismatch / hello timeout 的 PC 生命周期已在 §connected→failed 覆盖；hello 应用层语义见 [datachannel-error-protocol](../decisions/datachannel-error-protocol.md) scenarios #5/#6。
 
 ## Reference
 

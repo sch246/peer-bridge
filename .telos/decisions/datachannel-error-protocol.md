@@ -3,6 +3,7 @@ id: datachannel-error-protocol
 kind: decision
 status: decided
 since: 2026-05
+revised: 2026-05-31
 supersedes: none
 ---
 
@@ -51,6 +52,30 @@ M3 P2P 层会出现多种错误：fingerprint verify 失败、peer_id 未在 kno
 | 1 | 任意错误 (协议/网络/文件) |
 | 2 | 信号中断 (Ctrl+C, SIGTERM) |
 
+## Implementation surface (M3 Phase 7a/7b/8 落地)
+
+以上矩阵是 scenario × 协议响应 × CLI 退出码。Phase 7a · 7b · 8 实现时填了中间一层：应用层 SDK （`FileSender` / `FileReceiver` / `RoomSession`）怎么把上面表里的 "协议响应" 变成可调用者能拿到的 Promise/state 信号。这是 code 层的合同：CLI 未到位前的 caller（测试、daemon）仅靠 SDK surface 就能区分成败。
+
+| #   | Scenario                     | Sender SDK surface                                                                         | Receiver SDK surface                                                          | 实现位置                                                        |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 5   | hello major mismatch         | `RoomSession.ready` reject `Error('version_mismatch: local <X> peer <Y>')`; 不发回复 hello | 同：对称同中同 reject                                                         | `room-session.ts` `#handlePeerHello`                            |
+| 6   | hello minor mismatch         | `RoomSession.ready` resolve；`remoteVersion` / `remoteCapabilities` 填充                   | 同                                                                            | 同上                                                            |
+| 10  | chunk seq_num gap            | 收到 `room:file_abort{reason:'chunk_gap'}` 后 `FileSender.send()` Promise reject           | `FileReceiver` state=`failed`, `#failReason='chunk_gap'`, `.part` 被删除      | `file-sender.ts` / `file-receiver.ts`                           |
+| 11  | SHA-256 mismatch             | 同上，reason='sha256_mismatch'                                                             | 同上，reason='sha256_mismatch'                                                | 同上                                                            |
+| 12  | size > 500 MiB               | `FileSender.send()` reject `Error('File rejected: file_too_large')`                        | `FileReceiver` state=`failed`, `#failReason='file_too_large'`；不创建 `.part` | `file-receiver.ts` size check 在 user `onFileOffer` 之前        |
+| 13  | 接收方 reject file_offer     | `FileSender.send()` reject `Error('File rejected: <reason>')`                              | user `onFileOffer` 返回 `{accept: false, reason}`                             | `file-sender.ts` reject 路径                                    |
+| 16  | bufferedAmount 背压超时 (5s) | sender 发 `room:file_abort{reason:'backpressure_timeout'}`后 Promise reject                | 接收端收到 abort，删 `.part`                                                  | `room-session.ts` `sendBulkWithBackpressure` + `file-sender.ts` |
+
+携带的参数/阈值，M3 落地选择（只记这里，不额外开决定文件防碎片化）：
+
+- **chunk size**: 60 KiB (61440 B) per `webrtc-datachannel-limits.md` impl note 1
+- **bufferedAmount threshold**: 256 KiB (4 个 chunk 的积压)
+- **bufferedAmount timeout**: 5000 ms
+- **hello timeout**: 5000 ms (`RoomSessionOptions.helloTimeoutMs`)
+- **size cap**: 500 × 1024 × 1024 B 硬编码于 `file-receiver.ts`
+
+以上阈值仅为 M3 初版选择。Phase 9 CLI 集成后可能需要从 CLI 参数或环境变量覆盖。调起后同步更新本 sediment。
+
 ## Boundaries
 
 - 不覆盖: rendezvous 信令层错误 (close codes 1008/1011/1013) — 见 `signaling-message-fields.md` Channel B
@@ -67,7 +92,8 @@ M3 P2P 层会出现多种错误：fingerprint verify 失败、peer_id 未在 kno
 
 ## Related
 
-- `peerconnection-lifecycle.md` (Close triggers)
+- `peerconnection-lifecycle.md` (Close triggers + connected→failed for hello mismatches/timeout)
+- `room-hello-handshake-policy.md` (#5/#6 sender + receiver 行为的完整表述)
 - `m3-cli-p2p-bypass-daemon.md` (CLI 退出码)
 - `p2p-signal-payload-format.md` (signal 超时)
 - `manual-fingerprint-confirmation-on-accept.md` (peer 验证基准)

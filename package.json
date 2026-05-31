@@ -15,9 +15,9 @@
     "typecheck": "pnpm -r typecheck"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@11.5.0",
   "devDependencies": {
     "@types/node": "^25.9.1",
     "husky": "9.1.7",
